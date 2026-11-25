@@ -235,7 +235,12 @@ fun KeysScreen(navController: NavController? = null) {
                         newKey = it
                         testResult = null
                     },
-                    label = { Text("API Key (e.g. sk-...)") },
+                    label = {
+                        Text(
+                            if (providerType == KeyManager.PROVIDER_OPENCODE) "API Key (saved as an OpenCode key)"
+                            else "API Key (e.g. sk-...)"
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -277,17 +282,39 @@ fun KeysScreen(navController: NavController? = null) {
                                 isTesting = true
                                 testResult = null
                                 scope.launch {
-                                    if (keys.contains(trimmedKey)) {
+                                    if (keys.contains(trimmedKey) ||
+                                        keys.contains(KeyManager.tagOpenCode(trimmedKey))
+                                    ) {
                                         isTesting = false
                                         testResult = "This key has already been added"
                                         return@launch
                                     }
+                                    val keyProvider = KeyManager.providerForKey(trimmedKey)
+                                    // OpenCode keys have no prefix. A key without a known prefix
+                                    // becomes an OpenCode key while OpenCode is the chosen provider.
+                                    if (keyProvider == KeyManager.PROVIDER_CUSTOM &&
+                                        providerType == KeyManager.PROVIDER_OPENCODE
+                                    ) {
+                                        isTesting = false
+                                        // OpenCode's model list is public, so the key can't be
+                                        // tested without spending a request. It is checked on first use.
+                                        if (!keyManager.addKey(KeyManager.tagOpenCode(trimmedKey))) {
+                                            testResult = "Could not encrypt the key. It was not saved."
+                                            return@launch
+                                        }
+                                        keys = keyManager.getKeys()
+                                        newKey = ""
+                                        closeSheet()
+                                        return@launch
+                                    }
                                     // A key is only ever tested against its own provider.
-                                    val result = when (KeyManager.providerForKey(trimmedKey)) {
+                                    val result = when (keyProvider) {
                                         KeyManager.PROVIDER_GROQ ->
                                             PythonBridge.groqValidateKey(trimmedKey)
                                         KeyManager.PROVIDER_GEMINI ->
                                             PythonBridge.geminiValidateKey(trimmedKey)
+                                        KeyManager.PROVIDER_CLAUDE ->
+                                            PythonBridge.claudeValidateKey(trimmedKey)
                                         else -> {
                                             if (customEndpoint.isBlank()) {
                                                 isTesting = false
@@ -336,6 +363,10 @@ fun KeysScreen(navController: NavController? = null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ProviderLinkChip("Gemini", "https://aistudio.google.com/app/apikey", uriHandler)
                     ProviderLinkChip("Groq", "https://console.groq.com/keys", uriHandler)
+                    ProviderLinkChip("Claude", "https://console.anthropic.com/settings/keys", uriHandler)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ProviderLinkChip("OpenAI", "https://platform.openai.com/api-keys", uriHandler)
                 }
             }
@@ -490,11 +521,7 @@ private fun KeyCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                val providerName = when (KeyManager.providerForKey(keyStr)) {
-                    KeyManager.PROVIDER_GEMINI -> "Gemini"
-                    KeyManager.PROVIDER_GROQ -> "Groq"
-                    else -> "Custom"
-                }
+                val providerName = KeyManager.providerName(KeyManager.providerForKey(keyStr))
                 
                 Text(
                     text = "$providerName Key ${index + 1}",

@@ -27,16 +27,42 @@ class KeyManager(context: Context) {
         const val PROVIDER_GEMINI = "gemini"
         const val PROVIDER_GROQ = "groq"
         const val PROVIDER_CUSTOM = "custom"
+        const val PROVIDER_CLAUDE = "claude"
+        const val PROVIDER_OPENCODE = "opencode"
 
         /**
-         * Which provider a key belongs to, decided by its prefix.
+         * OpenCode keys have no prefix of their own, so Buddy adds this tag when it
+         * saves one. The tag is stored with the key (encrypted) and is removed by
+         * [secretOf] before the key is sent anywhere.
+         */
+        private const val OPENCODE_TAG = "opencode:"
+
+        /**
+         * Which provider a saved key belongs to, decided by its prefix or tag.
          * A key is only ever sent to its own provider.
-         * Anything that is not a Gemini or Groq key is a custom-endpoint key.
+         * Anything else is a custom-endpoint key.
          */
         fun providerForKey(key: String): String = when {
+            key.startsWith(OPENCODE_TAG) -> PROVIDER_OPENCODE
             key.startsWith("AIza") -> PROVIDER_GEMINI
             key.startsWith("gsk_") -> PROVIDER_GROQ
+            key.startsWith("sk-ant-") -> PROVIDER_CLAUDE
             else -> PROVIDER_CUSTOM
+        }
+
+        /** The saved form of an OpenCode key. */
+        fun tagOpenCode(key: String): String =
+            if (key.startsWith(OPENCODE_TAG)) key else OPENCODE_TAG + key
+
+        /** The real key to send to the provider (any Buddy tag removed). */
+        fun secretOf(savedKey: String): String = savedKey.removePrefix(OPENCODE_TAG)
+
+        fun providerName(provider: String): String = when (provider) {
+            PROVIDER_GEMINI -> "Gemini"
+            PROVIDER_GROQ -> "Groq"
+            PROVIDER_CLAUDE -> "Claude"
+            PROVIDER_OPENCODE -> "OpenCode"
+            else -> "Custom"
         }
     }
 
@@ -158,6 +184,20 @@ class KeyManager(context: Context) {
         saveKeys(keys)
         rateLimitedKeys.remove(key)
         invalidKeys.remove(key)
+    }
+
+    /**
+     * Turns saved Custom keys into OpenCode keys (for people who used the Custom
+     * provider with OpenCode before). Returns how many keys were moved.
+     */
+    fun moveCustomKeysToOpenCode(): Int {
+        val keys = getKeys()
+        val moved = keys.count { providerForKey(it) == PROVIDER_CUSTOM }
+        if (moved == 0) return 0
+        val updated = keys.map {
+            if (providerForKey(it) == PROVIDER_CUSTOM) tagOpenCode(it) else it
+        }.distinct()
+        return if (saveKeys(updated)) moved else 0
     }
 
     /** Keys that belong to [provider] (see [providerForKey]). */

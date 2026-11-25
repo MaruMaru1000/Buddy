@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.buddyapp.Buddy.manager.CommandManager
 import kotlinx.coroutines.launch
 import com.buddyapp.Buddy.api.PythonBridge
+import com.buddyapp.Buddy.api.Providers
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -65,11 +66,33 @@ fun SettingsScreen() {
     var customEndpoint by remember { mutableStateOf(prefs.getString("custom_endpoint", "") ?: "") }
     var customModel by remember { mutableStateOf(prefs.getString("custom_model", "") ?: "") }
     val keyManager = remember { KeyManager(context) }
-    var customKeyInput by remember { mutableStateOf("") }
     var customKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size) }
-    var customKeyStatus by remember { mutableStateOf<String?>(null) }
-    var isTestingCustomKey by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // Claude settings
+    var selectedClaudeModel by remember {
+        mutableStateOf(prefs.getString("claude_model", Providers.DEFAULT_CLAUDE_MODEL) ?: Providers.DEFAULT_CLAUDE_MODEL)
+    }
+    var claudeKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_CLAUDE).size) }
+
+    // OpenCode settings
+    var openCodeModel by remember { mutableStateOf(prefs.getString("opencode_model", "") ?: "") }
+    var openCodeKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_OPENCODE).size) }
+    var openCodeModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var openCodeModelsError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(providerType) {
+        if (providerType == KeyManager.PROVIDER_OPENCODE && openCodeModels.isEmpty()) {
+            PythonBridge.openaiListChatModels(Providers.OPENCODE_ENDPOINT)
+                .onSuccess { openCodeModels = it; openCodeModelsError = null }
+                .onFailure { openCodeModelsError = "Couldn't load OpenCode's model list. Type the model name instead." }
+        }
+    }
+
+    fun selectProvider(type: String) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        providerType = type
+        prefs.edit().putString("provider_type", type).apply()
+    }
 
     // History
     val historyManager = remember { HistoryManager(context) }
@@ -99,31 +122,35 @@ fun SettingsScreen() {
             ) {
                 ProviderCard(
                     title = "Google Gemini",
-                    selected = providerType == "gemini",
+                    selected = providerType == KeyManager.PROVIDER_GEMINI,
                     modifier = Modifier.weight(1f)
-                ) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    providerType = "gemini"
-                    prefs.edit().putString("provider_type", "gemini").apply()
-                }
+                ) { selectProvider(KeyManager.PROVIDER_GEMINI) }
                 ProviderCard(
                     title = "Groq",
-                    selected = providerType == "groq",
+                    selected = providerType == KeyManager.PROVIDER_GROQ,
                     modifier = Modifier.weight(1f)
-                ) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    providerType = "groq"
-                    prefs.edit().putString("provider_type", "groq").apply()
-                }
+                ) { selectProvider(KeyManager.PROVIDER_GROQ) }
+                ProviderCard(
+                    title = "Claude",
+                    selected = providerType == KeyManager.PROVIDER_CLAUDE,
+                    modifier = Modifier.weight(1f)
+                ) { selectProvider(KeyManager.PROVIDER_CLAUDE) }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ProviderCard(
+                    title = "OpenCode",
+                    selected = providerType == KeyManager.PROVIDER_OPENCODE,
+                    modifier = Modifier.weight(1f)
+                ) { selectProvider(KeyManager.PROVIDER_OPENCODE) }
                 ProviderCard(
                     title = "Custom",
-                    selected = providerType == "custom",
+                    selected = providerType == KeyManager.PROVIDER_CUSTOM,
                     modifier = Modifier.weight(1f)
-                ) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    providerType = "custom"
-                    prefs.edit().putString("provider_type", "custom").apply()
-                }
+                ) { selectProvider(KeyManager.PROVIDER_CUSTOM) }
             }
         }
 
@@ -186,7 +213,134 @@ fun SettingsScreen() {
         }
 
         AnimatedVisibility(
-            visible = providerType == "custom",
+            visible = providerType == KeyManager.PROVIDER_CLAUDE,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            SettingsSection(title = "Claude Configuration", icon = Icons.Outlined.Memory) {
+                ProviderPanel {
+                    FieldHeading(
+                        "Model Selection",
+                        "Haiku is fastest and cheapest. Sonnet writes better. Opus is the best and costs the most."
+                    )
+                    CleanDropdown(
+                        options = Providers.CLAUDE_MODELS,
+                        selectedOption = selectedClaudeModel,
+                        onOptionSelected = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selectedClaudeModel = it
+                            prefs.edit().putString("claude_model", it).apply()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    KeyEntry(
+                        description = if (claudeKeyCount == 0) "Needs an API key from console.anthropic.com (starts with sk-ant-). A Claude.ai subscription does not work here."
+                                      else "$claudeKeyCount key(s) saved (encrypted). Manage them in the Keys tab.",
+                        placeholder = "sk-ant-..."
+                    ) { key ->
+                        when {
+                            KeyManager.providerForKey(key) != KeyManager.PROVIDER_CLAUDE ->
+                                false to "Claude API keys start with sk-ant-"
+                            keyManager.getKeys().contains(key) ->
+                                false to "This key is already saved"
+                            else -> {
+                                val result = PythonBridge.claudeValidateKey(key)
+                                if (result.isFailure) {
+                                    false to (result.exceptionOrNull()?.message ?: "Validation failed")
+                                } else if (!keyManager.addKey(key)) {
+                                    false to "Could not encrypt the key. It was not saved."
+                                } else {
+                                    claudeKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CLAUDE).size
+                                    true to "Key works and is saved"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = providerType == KeyManager.PROVIDER_OPENCODE,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            SettingsSection(title = "OpenCode Configuration", icon = Icons.Outlined.Memory) {
+                ProviderPanel {
+                    FieldHeading("Model Selection", "Chat models from OpenCode Go's model list")
+                    if (openCodeModels.isNotEmpty()) {
+                        CleanDropdown(
+                            options = openCodeModels,
+                            selectedOption = openCodeModel.ifEmpty { "Choose a model" },
+                            onOptionSelected = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                openCodeModel = it
+                                prefs.edit().putString("opencode_model", it).apply()
+                            }
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = openCodeModel,
+                            onValueChange = {
+                                openCodeModel = it
+                                prefs.edit().putString("opencode_model", it.trim()).apply()
+                            },
+                            placeholder = { Text(if (openCodeModelsError == null) "Loading models..." else "model-name") },
+                            supportingText = openCodeModelsError?.let { msg -> { Text(msg) } },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    KeyEntry(
+                        description = if (openCodeKeyCount == 0) "Paste your OpenCode Go key. It is stored encrypted and only sent to OpenCode."
+                                      else "$openCodeKeyCount key(s) saved (encrypted). Manage them in the Keys tab.",
+                        buttonText = "Save key"
+                    ) { key ->
+                        val tagged = KeyManager.tagOpenCode(key)
+                        when {
+                            KeyManager.providerForKey(key) != KeyManager.PROVIDER_CUSTOM ->
+                                false to "This looks like a ${KeyManager.providerName(KeyManager.providerForKey(key))} key, not an OpenCode key"
+                            keyManager.getKeys().contains(tagged) ->
+                                false to "This key is already saved"
+                            !keyManager.addKey(tagged) ->
+                                false to "Could not encrypt the key. It was not saved."
+                            else -> {
+                                openCodeKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_OPENCODE).size
+                                // OpenCode's model list is public, so a key can't be tested for free.
+                                true to "Key saved. It is checked the first time you use a command."
+                            }
+                        }
+                    }
+                    if (customKeyCount > 0) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val moved = keyManager.moveCustomKeysToOpenCode()
+                                customKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size
+                                openCodeKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_OPENCODE).size
+                                Toast.makeText(context, "Moved $moved key(s) to OpenCode", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Move my $customKeyCount Custom key(s) to OpenCode")
+                        }
+                        Text(
+                            text = "Only do this if those keys are OpenCode keys.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = providerType == KeyManager.PROVIDER_CUSTOM,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
         ) {
@@ -275,84 +429,30 @@ fun SettingsScreen() {
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        Text(
-                            text = "API Key",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (customKeyCount == 0) "No key saved yet. The key is tested against the endpoint above, then stored encrypted."
-                                   else "$customKeyCount key(s) saved (encrypted). Manage them in the Keys tab.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = customKeyInput,
-                            onValueChange = { customKeyInput = it; customKeyStatus = null },
-                            placeholder = { Text("Paste API key") },
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Password,
-                                autoCorrectEnabled = false
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                val key = customKeyInput.trim()
-                                val endpoint = normalizeEndpoint(customEndpoint)
-                                when {
-                                    KeyManager.providerForKey(key) != KeyManager.PROVIDER_CUSTOM ->
-                                        customKeyStatus = "This looks like a Gemini or Groq key. Add it in the Keys tab."
-                                    !endpoint.startsWith("https://", ignoreCase = true) ->
-                                        customKeyStatus = "Set an https:// endpoint first"
-                                    keyManager.getKeys().contains(key) ->
-                                        customKeyStatus = "This key is already saved"
-                                    else -> {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        isTestingCustomKey = true
-                                        customKeyStatus = null
-                                        scope.launch {
-                                            val result = PythonBridge.openaiValidateKey(key, endpoint)
-                                            isTestingCustomKey = false
-                                            customKeyStatus = if (result.isFailure) {
-                                                result.exceptionOrNull()?.message ?: "Validation failed"
-                                            } else if (!keyManager.addKey(key)) {
-                                                "Could not encrypt the key. It was not saved."
-                                            } else {
-                                                customKeyInput = ""
-                                                customKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size
-                                                "Key works and is saved"
-                                            }
-                                        }
+                        KeyEntry(
+                            description = if (customKeyCount == 0) "No key saved yet. The key is tested against the endpoint above, then stored encrypted."
+                                          else "$customKeyCount key(s) saved (encrypted). Manage them in the Keys tab."
+                        ) { key ->
+                            val endpoint = normalizeEndpoint(customEndpoint)
+                            when {
+                                KeyManager.providerForKey(key) != KeyManager.PROVIDER_CUSTOM ->
+                                    false to "This looks like a ${KeyManager.providerName(KeyManager.providerForKey(key))} key. Choose that provider instead."
+                                !endpoint.startsWith("https://", ignoreCase = true) ->
+                                    false to "Set an https:// endpoint first"
+                                keyManager.getKeys().contains(key) ->
+                                    false to "This key is already saved"
+                                else -> {
+                                    val result = PythonBridge.openaiValidateKey(key, endpoint)
+                                    if (result.isFailure) {
+                                        false to (result.exceptionOrNull()?.message ?: "Validation failed")
+                                    } else if (!keyManager.addKey(key)) {
+                                        false to "Could not encrypt the key. It was not saved."
+                                    } else {
+                                        customKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size
+                                        true to "Key works and is saved"
                                     }
                                 }
-                            },
-                            enabled = customKeyInput.isNotBlank() && !isTestingCustomKey,
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(if (isTestingCustomKey) "Testing..." else "Test & save key")
-                        }
-                        customKeyStatus?.let { msg ->
-                            Text(
-                                text = msg,
-                                fontSize = 12.sp,
-                                color = if (msg.startsWith("Key works")) MaterialTheme.colorScheme.tertiary
-                                        else MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
+                            }
                         }
                     }
                 }
@@ -377,7 +477,10 @@ fun SettingsScreen() {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Higher values make the AI more creative and less predictable.",
+                        text = if (providerType == KeyManager.PROVIDER_CLAUDE)
+                            "Claude does not use this setting (current Claude models don't allow it)."
+                        else
+                            "Higher values make the AI more creative and less predictable.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -667,6 +770,92 @@ fun CleanDropdown(
                 )
             }
         }
+    }
+}
+
+/** The rounded box that holds one provider's settings. */
+@Composable
+private fun ProviderPanel(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), content = content)
+    }
+}
+
+@Composable
+private fun FieldHeading(title: String, description: String) {
+    Text(text = title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(text = description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(modifier = Modifier.height(12.dp))
+}
+
+/**
+ * "API Key" field with a save button.
+ * [onSave] gets the trimmed key and returns (worked, message to show).
+ */
+@Composable
+private fun KeyEntry(
+    description: String,
+    placeholder: String = "Paste API key",
+    buttonText: String = "Test & save key",
+    onSave: suspend (String) -> Pair<Boolean, String>
+) {
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    var input by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    FieldHeading("API Key", description)
+    OutlinedTextField(
+        value = input,
+        onValueChange = { input = it; status = null },
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            autoCorrectEnabled = false
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+        )
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Button(
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            busy = true
+            status = null
+            scope.launch {
+                val result = onSave(input.trim())
+                busy = false
+                status = result
+                if (result.first) input = ""
+            }
+        },
+        enabled = input.isNotBlank() && !busy,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(if (busy) "Testing..." else buttonText)
+    }
+    status?.let { (ok, msg) ->
+        Text(
+            text = msg,
+            fontSize = 12.sp,
+            color = if (ok) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }
 

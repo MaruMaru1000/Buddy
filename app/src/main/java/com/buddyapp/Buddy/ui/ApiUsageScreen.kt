@@ -48,11 +48,7 @@ fun ApiUsageScreen(navController: NavController, keyIndex: Int) {
     val stats = usageManager.getStats(key)
 
 
-    val providerName = when (KeyManager.providerForKey(key)) {
-        KeyManager.PROVIDER_GEMINI -> "Gemini"
-        KeyManager.PROVIDER_GROQ -> "Groq"
-        else -> "Custom"
-    }
+    val providerName = KeyManager.providerName(KeyManager.providerForKey(key))
     
     val formattedDate = if (stats.lastUsedTimestamp > 0) {
         SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(stats.lastUsedTimestamp))

@@ -24,7 +24,9 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
 import android.widget.Toast
 import com.buddyapp.Buddy.api.PythonBridge
+import com.buddyapp.Buddy.api.Providers
 import com.buddyapp.Buddy.manager.CommandManager
+import com.buddyapp.Buddy.manager.CommandModifiers
 import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.manager.KeyManager
 import com.buddyapp.Buddy.manager.ReplyPrompt
@@ -138,13 +140,34 @@ class AssistantService : AccessibilityService() {
         processCommand(source, cleanText, command)
     }
 
-    private fun processCommand(source: AccessibilityNodeInfo, text: String, command: Command) {
+    private fun processCommand(source: AccessibilityNodeInfo, fullText: String, command: Command) {
         val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val providerType = prefs.getString("provider_type", KeyManager.PROVIDER_CUSTOM) ?: KeyManager.PROVIDER_CUSTOM
-        val model: String
+        var model: String
         val endpoint: String
 
-        if (providerType == "custom") {
+        // Optional "text !! extra instructions, temp=0.2 /fix" modifiers.
+        val modifiers = CommandModifiers.parse(fullText)
+        val text = modifiers.text
+        if (text.isEmpty()) {
+            serviceScope.launch { showToast("No text before !!") }
+            isProcessing = false
+            return
+        }
+        val prompt = CommandModifiers.applyToPrompt(command.prompt, modifiers.instructions)
+
+        if (providerType == KeyManager.PROVIDER_OPENCODE) {
+            model = prefs.getString("opencode_model", "") ?: ""
+            endpoint = Providers.OPENCODE_ENDPOINT
+            if (model.isBlank() && modifiers.model == null) {
+                serviceScope.launch { showToast("Choose an OpenCode model in Settings.") }
+                isProcessing = false
+                return
+            }
+        } else if (providerType == KeyManager.PROVIDER_CLAUDE) {
+            model = prefs.getString("claude_model", Providers.DEFAULT_CLAUDE_MODEL) ?: Providers.DEFAULT_CLAUDE_MODEL
+            endpoint = ""
+        } else if (providerType == "custom") {
             model = prefs.getString("custom_model", "") ?: ""
             endpoint = prefs.getString("custom_endpoint", "") ?: ""
             if (model.isBlank() || endpoint.isBlank()) {
@@ -165,7 +188,8 @@ class AssistantService : AccessibilityService() {
             endpoint = ""
         }
         
-        val temperature = prefs.getFloat("temperature", 0.5f).toDouble()
+        modifiers.model?.let { model = it }
+        val temperature = modifiers.temperature ?: prefs.getFloat("temperature", 0.5f).toDouble()
 
         // /reply: split "message || notes" and wrap both as data blocks.
         val isReply = command.builtInName == "reply"
@@ -178,7 +202,9 @@ class AssistantService : AccessibilityService() {
         } else text
 
         currentJob = serviceScope.launch {
-            val originalText = text
+            // What was in the field before the trigger (including any "!!" part),
+            // so a failed request puts back exactly what was typed.
+            val originalText = fullText
             var spinnerJob: Job? = null
             try {
                 withTimeout(90_000) {
@@ -195,10 +221,16 @@ class AssistantService : AccessibilityService() {
                         }
 
                         // ── Python does the AI call ──────────────────────────
+                        val secret = KeyManager.secretOf(key)
                         val result = when (providerType) {
-                            "custom" -> PythonBridge.openaiGenerate(command.prompt, aiInput, key, model, temperature, endpoint)
-                            "groq"   -> PythonBridge.groqGenerate(command.prompt, aiInput, key, model, temperature)
-                            else     -> PythonBridge.geminiGenerate(command.prompt, aiInput, key, model, temperature)
+                            KeyManager.PROVIDER_CUSTOM, KeyManager.PROVIDER_OPENCODE ->
+                                PythonBridge.openaiGenerate(prompt, aiInput, secret, model, temperature, endpoint)
+                            KeyManager.PROVIDER_CLAUDE ->
+                                PythonBridge.claudeGenerate(prompt, aiInput, secret, model)
+                            KeyManager.PROVIDER_GROQ ->
+                                PythonBridge.groqGenerate(prompt, aiInput, secret, model, temperature)
+                            else ->
+                                PythonBridge.geminiGenerate(prompt, aiInput, secret, model, temperature)
                         }
 
                         usageManager.recordRequest(key, result.isSuccess)

@@ -73,6 +73,35 @@ def validate_key(api_key: str, endpoint: str) -> dict:
         return {"success": False, "error": str(ex)}
 
 
+def list_chat_models(endpoint: str) -> dict:
+    """
+    List chat models from the endpoint's /models list (no key sent).
+    Used for OpenCode, whose model list is public. Models that say which APIs
+    they support are only kept if they support chat/completions.
+    Returns {"success": True, "models": "id1\\nid2"} or {"success": False, "error": "..."}
+    """
+    if not _is_https(endpoint):
+        return {"success": False, "error": HTTPS_ERROR}
+    req = urllib.request.Request(f"{_base_url(endpoint)}/models", method="GET")
+    req.add_header("User-Agent", get_user_agent())
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8")).get("data", [])
+    except Exception as ex:
+        return {"success": False, "error": str(ex)}
+    ids = []
+    for m in data:
+        if not isinstance(m, dict) or not m.get("id"):
+            continue
+        if m.get("type") not in (None, "chat"):
+            continue
+        api = m.get("api")
+        if isinstance(api, dict) and "chat-completions" not in api:
+            continue
+        ids.append(str(m["id"]))
+    return {"success": True, "models": "\n".join(sorted(ids))}
+
+
 def generate(prompt: str, text: str, api_key: str, model: str, temperature: float, endpoint: str) -> dict:
     """
     Call OpenAI-compatible API to transform text.
