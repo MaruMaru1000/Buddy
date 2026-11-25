@@ -29,6 +29,7 @@ import com.buddyapp.Buddy.manager.CommandManager
 import com.buddyapp.Buddy.manager.CommandModifiers
 import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.manager.KeyManager
+import com.buddyapp.Buddy.manager.PlainPunctuation
 import com.buddyapp.Buddy.manager.ReplyPrompt
 import com.buddyapp.Buddy.manager.UsageManager
 import com.buddyapp.Buddy.model.Command
@@ -154,7 +155,10 @@ class AssistantService : AccessibilityService() {
             isProcessing = false
             return
         }
-        val prompt = CommandModifiers.applyToPrompt(command.prompt, modifiers.instructions)
+        // "Plain punctuation" setting: no em dashes, no Oxford comma.
+        val plainPunctuation = prefs.getBoolean(PlainPunctuation.PREF_KEY, PlainPunctuation.DEFAULT)
+        val basePrompt = if (plainPunctuation) command.prompt + PlainPunctuation.RULE else command.prompt
+        val prompt = CommandModifiers.applyToPrompt(basePrompt, modifiers.instructions)
 
         if (providerType == KeyManager.PROVIDER_OPENCODE) {
             model = prefs.getString("opencode_model", "") ?: ""
@@ -237,9 +241,9 @@ class AssistantService : AccessibilityService() {
 
                         if (result.isSuccess) {
                             spinnerJob?.cancel(); spinnerJob = null
-                            val generatedText = result.getOrThrow().let {
-                                if (isReply) ReplyPrompt.cleanOutput(it) else it
-                            }
+                            val generatedText = result.getOrThrow()
+                                .let { if (isReply) ReplyPrompt.cleanOutput(it) else it }
+                                .let { if (plainPunctuation) PlainPunctuation.clean(it) else it }
                             if (replaceText(source, generatedText)) {
                                 rememberForUndo(source, originalText)
                                 historyManager.addHistoryItem(originalText, generatedText, command.trigger)

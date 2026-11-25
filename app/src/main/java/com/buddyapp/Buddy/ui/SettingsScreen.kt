@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.buddyapp.Buddy.manager.HistoryManager
+import com.buddyapp.Buddy.manager.PlainPunctuation
 import com.buddyapp.Buddy.ui.components.ScreenTitle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +104,10 @@ fun SettingsScreen() {
     val commandManager = remember { CommandManager(context) }
     var triggerPrefix by remember { mutableStateOf(commandManager.getTriggerPrefix()) }
     var prefixError by remember { mutableStateOf<String?>(null) }
+
+    var plainPunctuation by remember {
+        mutableStateOf(prefs.getBoolean(PlainPunctuation.PREF_KEY, PlainPunctuation.DEFAULT))
+    }
 
     Column(
         modifier = Modifier
@@ -581,6 +586,36 @@ fun SettingsScreen() {
                             color = MaterialTheme.colorScheme.error,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 8.dp).align(Alignment.End)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                            Text(
+                                text = "Plain punctuation",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "No em dashes (—) and no Oxford comma in AI results. Any em dash left over is turned into a comma.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = plainPunctuation,
+                            onCheckedChange = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                plainPunctuation = it
+                                prefs.edit().putBoolean(PlainPunctuation.PREF_KEY, it).apply()
+                            }
                         )
                     }
                 }
