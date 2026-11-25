@@ -32,6 +32,7 @@ import com.buddyapp.Buddy.manager.CommandManager
 import kotlinx.coroutines.launch
 import com.buddyapp.Buddy.api.PythonBridge
 import com.buddyapp.Buddy.api.Providers
+import com.buddyapp.Buddy.api.OpenCodeModel
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -79,13 +80,27 @@ fun SettingsScreen() {
     // OpenCode settings
     var openCodeModel by remember { mutableStateOf(prefs.getString("opencode_model", "") ?: "") }
     var openCodeKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_OPENCODE).size) }
-    var openCodeModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Start with the last saved list, then refresh it from OpenCode.
+    var openCodeModels by remember {
+        mutableStateOf(OpenCodeModel.parseList(prefs.getString(Providers.OPENCODE_MODELS_PREF, null)))
+    }
     var openCodeModelsError by remember { mutableStateOf<String?>(null) }
+    var openCodeModelsLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(providerType) {
-        if (providerType == KeyManager.PROVIDER_OPENCODE && openCodeModels.isEmpty()) {
-            PythonBridge.openaiListChatModels(Providers.OPENCODE_ENDPOINT)
-                .onSuccess { openCodeModels = it; openCodeModelsError = null }
-                .onFailure { openCodeModelsError = "Couldn't load OpenCode's model list. Type the model name instead." }
+        if (providerType == KeyManager.PROVIDER_OPENCODE && !openCodeModelsLoaded) {
+            PythonBridge.openCodeListModels()
+                .onSuccess { raw ->
+                    openCodeModelsLoaded = true
+                    openCodeModelsError = null
+                    // Saved so the service knows each model's format (and for model= in "!!").
+                    prefs.edit().putString(Providers.OPENCODE_MODELS_PREF, raw).apply()
+                    openCodeModels = OpenCodeModel.parseList(raw)
+                }
+                .onFailure {
+                    if (openCodeModels.isEmpty()) {
+                        openCodeModelsError = "Couldn't load OpenCode's model list. Type the model name instead."
+                    }
+                }
         }
     }
 
@@ -272,10 +287,13 @@ fun SettingsScreen() {
         ) {
             SettingsSection(title = "OpenCode Configuration", icon = Icons.Outlined.Memory) {
                 ProviderPanel {
-                    FieldHeading("Model Selection", "Chat models from OpenCode Go's model list")
+                    FieldHeading(
+                        "Model Selection",
+                        "Chat models from OpenCode Go's model list, including Claude Haiku, Qwen and Grok"
+                    )
                     if (openCodeModels.isNotEmpty()) {
                         CleanDropdown(
-                            options = openCodeModels,
+                            options = openCodeModels.map { it.id },
                             selectedOption = openCodeModel.ifEmpty { "Choose a model" },
                             onOptionSelected = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)

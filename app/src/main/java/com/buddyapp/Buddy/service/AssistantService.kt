@@ -25,6 +25,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.buddyapp.Buddy.api.PythonBridge
 import com.buddyapp.Buddy.api.Providers
+import com.buddyapp.Buddy.api.OpenCodeModel
 import com.buddyapp.Buddy.manager.CommandManager
 import com.buddyapp.Buddy.manager.CommandModifiers
 import com.buddyapp.Buddy.manager.HistoryManager
@@ -68,6 +69,8 @@ class AssistantService : AccessibilityService() {
     private var dismissRunnable: Runnable? = null
     private var dismissAnimator: AnimatorSet? = null
     private var enterAnimator: AnimatorSet? = null
+    private var modifierPill: TextView? = null
+    private val hidePillRunnable = Runnable { hideModifierPill() }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()
@@ -82,6 +85,10 @@ class AssistantService : AccessibilityService() {
         const val TOAST_ANIM_DURATION_MS = 300L
         const val TOAST_SLIDE_DISTANCE_DP = 40
         const val REPLACE_FAILED_MSG = "Couldn't replace text in this app"
+        const val PILL_BACKGROUND_COLOR = 0xE6C62828.toInt() // red
+        const val PILL_TOP_MARGIN_DP = 48
+        /** The pill hides itself if nothing is typed for this long. */
+        const val PILL_IDLE_HIDE_MS = 10_000L
     }
 
     override fun onServiceConnected() {
@@ -104,6 +111,8 @@ class AssistantService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED || isProcessing) return
         val source = event.source ?: return
         val text = source.text?.toString() ?: return
+        // Red "!!" pill while instructions are being typed (never for password fields).
+        updateModifierPill(if (source.isPassword) null else text)
         if (text.isEmpty()) return
 
         if (System.currentTimeMillis() - lastTriggerRefresh > TRIGGER_REFRESH_INTERVAL_MS) {
@@ -142,6 +151,7 @@ class AssistantService : AccessibilityService() {
     }
 
     private fun processCommand(source: AccessibilityNodeInfo, fullText: String, command: Command) {
+        hideModifierPill()
         val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
         val providerType = prefs.getString("provider_type", KeyManager.PROVIDER_CUSTOM) ?: KeyManager.PROVIDER_CUSTOM
         var model: String
@@ -195,6 +205,11 @@ class AssistantService : AccessibilityService() {
         modifiers.model?.let { model = it }
         val temperature = modifiers.temperature ?: prefs.getFloat("temperature", 0.5f).toDouble()
 
+        // OpenCode models use different request formats (chat / Claude-style / Responses).
+        val openCodeModel = if (providerType == KeyManager.PROVIDER_OPENCODE) {
+            OpenCodeModel.find(OpenCodeModel.parseList(prefs.getString(Providers.OPENCODE_MODELS_PREF, null)), model)
+        } else null
+
         // /reply: split "message || notes" and wrap both as data blocks.
         val isReply = command.builtInName == "reply"
         val aiInput = if (isReply) {
@@ -227,7 +242,21 @@ class AssistantService : AccessibilityService() {
                         // ── Python does the AI call ──────────────────────────
                         val secret = KeyManager.secretOf(key)
                         val result = when (providerType) {
-                            KeyManager.PROVIDER_CUSTOM, KeyManager.PROVIDER_OPENCODE ->
+                            KeyManager.PROVIDER_OPENCODE -> {
+                                val m = openCodeModel ?: OpenCodeModel(model, OpenCodeModel.CHAT, true)
+                                // -1 = don't send a temperature (some models reject it).
+                                val t = if (m.acceptsTemperature) temperature else -1.0
+                                when (m.format) {
+                                    OpenCodeModel.MESSAGES -> PythonBridge.claudeGenerate(
+                                        prompt, aiInput, secret, model, Providers.OPENCODE_MESSAGES_ENDPOINT, t
+                                    )
+                                    OpenCodeModel.RESPONSES ->
+                                        PythonBridge.openaiResponsesGenerate(prompt, aiInput, secret, model, t, endpoint)
+                                    else ->
+                                        PythonBridge.openaiGenerate(prompt, aiInput, secret, model, t, endpoint)
+                                }
+                            }
+                            KeyManager.PROVIDER_CUSTOM ->
                                 PythonBridge.openaiGenerate(prompt, aiInput, secret, model, temperature, endpoint)
                             KeyManager.PROVIDER_CLAUDE ->
                                 PythonBridge.claudeGenerate(prompt, aiInput, secret, model)
@@ -446,6 +475,61 @@ class AssistantService : AccessibilityService() {
         }
     }
 
+    /**
+     * Shows, updates or hides the red "!!" pill at the top of the screen.
+     * It only displays what Buddy read from the "!!" part. It never changes the text field.
+     * [text] null (or text without "!!") hides it. Runs on the main thread.
+     */
+    private fun updateModifierPill(text: String?) {
+        val label = text?.let { CommandModifiers.pillLabel(it, cachedPrefix) }
+        if (label == null) {
+            hideModifierPill()
+            return
+        }
+        handler.removeCallbacks(hidePillRunnable)
+        handler.postDelayed(hidePillRunnable, PILL_IDLE_HIDE_MS)
+        modifierPill?.let {
+            it.text = label
+            return
+        }
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val view = TextView(applicationContext).apply {
+            this.text = label
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = (resources.displayMetrics.widthPixels * 0.85).toInt()
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            background = GradientDrawable().apply {
+                setColor(PILL_BACKGROUND_COLOR)
+                cornerRadius = dp(20).toFloat()
+            }
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dp(PILL_TOP_MARGIN_DP)
+        }
+        try {
+            wm.addView(view, params)
+            modifierPill = view
+        } catch (_: Exception) {}
+    }
+
+    private fun hideModifierPill() {
+        handler.removeCallbacks(hidePillRunnable)
+        modifierPill?.let { view ->
+            try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) } catch (_: Exception) {}
+        }
+        modifierPill = null
+    }
+
     private fun dismissOverlayToast() {
         dismissRunnable?.let { handler.removeCallbacks(it) }
         dismissRunnable = null; enterAnimator?.cancel(); enterAnimator = null
@@ -507,5 +591,5 @@ class AssistantService : AccessibilityService() {
     }
 
     override fun onInterrupt() { isProcessing = false; currentJob?.cancel() }
-    override fun onDestroy() { super.onDestroy(); dismissOverlayToast(); serviceScope.cancel() }
+    override fun onDestroy() { super.onDestroy(); dismissOverlayToast(); hideModifierPill(); serviceScope.cancel() }
 }

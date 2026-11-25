@@ -163,10 +163,26 @@ object PythonBridge {
         }
     }
 
-    /** Chat model names from an OpenAI-compatible endpoint's public model list. */
-    suspend fun openaiListChatModels(endpoint: String): Result<List<String>> = withContext(Dispatchers.IO) {
-        callPython("openai_client", "list_chat_models", endpoint) { map -> map["models"] ?: "" }
-            .map { it.lines().filter(String::isNotBlank) }
+    /**
+     * OpenCode's public model list, as raw lines of "id<TAB>format<TAB>1|0"
+     * (parse with [OpenCodeModel.parseList]; the raw text is also saved in prefs).
+     */
+    suspend fun openCodeListModels(): Result<String> = withContext(Dispatchers.IO) {
+        callPython("openai_client", "list_chat_models", Providers.OPENCODE_ENDPOINT) { map -> map["models"] ?: "" }
+    }
+
+    /** For models that only take OpenAI's "Responses" format. temperature < 0: none sent. */
+    suspend fun openaiResponsesGenerate(
+        prompt: String,
+        text: String,
+        apiKey: String,
+        model: String,
+        temperature: Double,
+        endpoint: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        callPython("openai_client", "generate_responses", prompt, text, apiKey, model, temperature, endpoint) { map ->
+            map["result"] ?: ""
+        }
     }
 
     // ── Claude (Anthropic) ──────────────────────────────────────────────────
@@ -175,14 +191,19 @@ object PythonBridge {
         callPython("anthropic_client", "validate_key", apiKey) { "Valid" }
     }
 
-    /** No temperature: current Claude models reject it. */
+    /**
+     * Anthropic Messages format. [baseUrl] "" = Anthropic itself (no temperature sent).
+     * Otherwise OpenCode's Messages endpoint; temperature < 0 means none is sent.
+     */
     suspend fun claudeGenerate(
         prompt: String,
         text: String,
         apiKey: String,
-        model: String
+        model: String,
+        baseUrl: String = "",
+        temperature: Double = -1.0
     ): Result<String> = withContext(Dispatchers.IO) {
-        callPython("anthropic_client", "generate", prompt, text, apiKey, model) { map ->
+        callPython("anthropic_client", "generate", prompt, text, apiKey, model, baseUrl, temperature) { map ->
             map["result"] ?: ""
         }
     }

@@ -20,8 +20,31 @@ object CommandModifiers {
         /** Extra instructions, or "" if there are none. */
         val instructions: String,
         val temperature: Double?,
-        val model: String?
+        val model: String?,
+        /** True when the text has a "!!" part. */
+        val found: Boolean = false
     )
+
+    /**
+     * Label for the red "!!" pill shown while typing, e.g. "!! more formal · temp 0.2".
+     * [triggerPrefix] is removed from the end so a half-typed "/fi" isn't shown.
+     * Returns null when there is no "!!" part.
+     */
+    fun pillLabel(text: String, triggerPrefix: String): String? {
+        if (!text.contains("!!")) return null
+        val withoutTrigger = text.replace(
+            Regex("""\s*${Regex.escape(triggerPrefix)}\S*$"""), ""
+        )
+        val parsed = parse(withoutTrigger)
+        if (!parsed.found) return null
+        val parts = mutableListOf<String>()
+        if (parsed.instructions.isNotBlank()) parts += parsed.instructions.take(60).let {
+            if (parsed.instructions.length > 60) "$it…" else it
+        }
+        parsed.temperature?.let { parts += "temp $it" }
+        parsed.model?.let { parts += "model $it" }
+        return "!! " + parts.ifEmpty { listOf("type your instructions") }.joinToString(" · ")
+    }
 
     private val SEPARATOR = Regex("""(?:^|\s)!!(?:\s|$)""")
     private val PARAM = Regex("""(?i)\b(temp|temperature|model)\s*=\s*([^\s,;]+)""")
@@ -48,7 +71,7 @@ object CommandModifiers {
             .replace(LEFTOVER_SEPARATORS, ", ")
             .replace(EDGE_SEPARATORS, "")
 
-        return Parsed(body, ReplyPrompt.sanitize(extra), temperature, model)
+        return Parsed(body, ReplyPrompt.sanitize(extra), temperature, model, found = true)
     }
 
     /** Adds the extra instructions to a command's prompt. */
