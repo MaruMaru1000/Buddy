@@ -5,7 +5,12 @@ plugins {
     id("com.chaquo.python")
 }
 
-val baseVersion = "1.4"
+val baseVersion = "1.5"
+
+// Release signing. The key and its passwords live OUTSIDE the repo, in
+// ~/.gradle/gradle.properties (BUDDY_RELEASE_*). Without them, release
+// builds are simply unsigned.
+val releaseStoreFile = findProperty("BUDDY_RELEASE_STORE_FILE") as String?
 
 android {
     namespace = "com.buddyapp.Buddy"
@@ -16,7 +21,7 @@ android {
         applicationId = "com.buddyapp.Buddy"
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
+        versionCode = 6
         versionName = "$baseVersion"
 
         vectorDrawables { useSupportLibrary = true }
@@ -24,8 +29,22 @@ android {
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = findProperty("BUDDY_RELEASE_STORE_PASSWORD") as String?
+                keyAlias = findProperty("BUDDY_RELEASE_KEY_ALIAS") as String?
+                keyPassword = findProperty("BUDDY_RELEASE_KEY_PASSWORD") as String?
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.manager.PlainPunctuation
+import com.buddyapp.Buddy.manager.UpdateManager
 import com.buddyapp.Buddy.ui.components.ScreenTitle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,6 +120,13 @@ fun SettingsScreen() {
     val commandManager = remember { CommandManager(context) }
     var triggerPrefix by remember { mutableStateOf(commandManager.getTriggerPrefix()) }
     var prefixError by remember { mutableStateOf<String?>(null) }
+
+    // Updates
+    val updateManager = remember { UpdateManager(context) }
+    var autoUpdate by remember { mutableStateOf(updateManager.autoCheck) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var foundUpdate by remember { mutableStateOf<UpdateManager.Release?>(null) }
 
     var plainPunctuation by remember {
         mutableStateOf(prefs.getBoolean(PlainPunctuation.PREF_KEY, PlainPunctuation.DEFAULT))
@@ -640,6 +648,76 @@ fun SettingsScreen() {
             }
         }
         
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // Updates (from this fork's GitHub Releases)
+        SettingsSection(title = "Updates", icon = Icons.Outlined.SystemUpdate) {
+            ProviderPanel {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                        Text(
+                            text = "Check for updates automatically",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Once a day when you open Buddy, it asks GitHub if there's a new version. " +
+                                   "Nothing is installed without your OK. You have version ${updateManager.currentVersion}.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoUpdate,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            autoUpdate = it
+                            updateManager.autoCheck = it
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        checkingUpdate = true
+                        updateStatus = null
+                        scope.launch {
+                            updateManager.check()
+                                .onSuccess { release ->
+                                    if (release == null) updateStatus = "You have the latest version."
+                                    else foundUpdate = release
+                                }
+                                .onFailure { updateStatus = "Couldn't check: ${it.message ?: "unknown error"}" }
+                            checkingUpdate = false
+                        }
+                    },
+                    enabled = !checkingUpdate,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (checkingUpdate) "Checking..." else "Check now")
+                }
+                updateStatus?.let {
+                    Text(
+                        text = it,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        }
+        foundUpdate?.let { release ->
+            UpdateDialog(release) { foundUpdate = null }
+        }
+
         Spacer(modifier = Modifier.height(28.dp))
 
         // Privacy: history controls

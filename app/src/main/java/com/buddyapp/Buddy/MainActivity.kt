@@ -17,7 +17,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.buddyapp.Buddy.manager.UpdateManager
+import com.buddyapp.Buddy.ui.UpdateDialog
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -55,6 +58,19 @@ fun BuddyMainScreen() {
     val navController = rememberNavController()
     val items = listOf(Screen.Dashboard, Screen.Keys, Screen.Commands, Screen.History, Screen.Settings)
     val haptic = LocalHapticFeedback.current
+
+    // Automatic update check (at most once a day; can be switched off in Settings).
+    val context = LocalContext.current
+    val updateManager = remember { UpdateManager(context) }
+    var availableUpdate by remember { mutableStateOf<UpdateManager.Release?>(null) }
+    LaunchedEffect(Unit) {
+        if (updateManager.shouldAutoCheck()) {
+            updateManager.check().onSuccess { availableUpdate = it }
+        }
+    }
+    availableUpdate?.let { release ->
+        UpdateDialog(release) { availableUpdate = null }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
