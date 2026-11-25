@@ -1,6 +1,7 @@
 package com.buddyapp.Buddy.ui
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.buddyapp.Buddy.manager.CommandManager
+import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.ui.components.ScreenTitle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +58,11 @@ fun SettingsScreen() {
     // Custom provider settings
     var customEndpoint by remember { mutableStateOf(prefs.getString("custom_endpoint", "") ?: "") }
     var customModel by remember { mutableStateOf(prefs.getString("custom_model", "") ?: "") }
+
+    // History
+    val historyManager = remember { HistoryManager(context) }
+    var saveHistory by remember { mutableStateOf(historyManager.isEnabled()) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
     // Trigger prefix
     val commandManager = remember { CommandManager(context) }
@@ -383,6 +390,79 @@ fun SettingsScreen() {
             }
         }
         
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // Privacy: history controls
+        SettingsSection(title = "Privacy", icon = Icons.Outlined.History) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                            Text(
+                                text = "Save history",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Keep your original text and the AI result on this phone. Off: nothing is saved.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = saveHistory,
+                            onCheckedChange = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                saveHistory = it
+                                historyManager.setEnabled(it)
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { showClearHistoryDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Clear history", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+
+        if (showClearHistoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearHistoryDialog = false },
+                title = { Text("Clear history") },
+                text = { Text("Delete all saved history? This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        historyManager.clearHistory()
+                        showClearHistoryDialog = false
+                        Toast.makeText(context, "History cleared", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Text("Clear", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearHistoryDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
         Spacer(modifier = Modifier.height(28.dp))
 
         // About (no links, no network)

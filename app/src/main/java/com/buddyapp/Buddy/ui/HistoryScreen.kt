@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.buddyapp.Buddy.manager.HistoryManager
@@ -29,6 +30,7 @@ fun HistoryScreen() {
     val historyManager = remember { HistoryManager(context) }
     var historyItems by remember { mutableStateOf(historyManager.getHistory()) }
     var showClearDialog by remember { mutableStateOf(false) }
+    val historyEnabled = remember { historyManager.isEnabled() }
 
     Column(
         modifier = Modifier
@@ -89,7 +91,9 @@ fun HistoryScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No history available.",
+                    text = if (historyEnabled) "No history available."
+                           else "History is off. Turn on \"Save history\" in Settings to keep results.",
+                    textAlign = TextAlign.Center,
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

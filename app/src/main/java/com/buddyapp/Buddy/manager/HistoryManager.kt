@@ -8,10 +8,19 @@ import org.json.JSONObject
 
 class HistoryManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("history", Context.MODE_PRIVATE)
-    
+    private val settingsPrefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
     companion object {
         const val PREF_HISTORY = "history_items"
         const val MAX_HISTORY_ITEMS = 100 // Keep memory and performance reasonable
+        const val PREF_SAVE_HISTORY = "save_history"
+    }
+
+    /** "Save history" setting. Off by default. */
+    fun isEnabled(): Boolean = settingsPrefs.getBoolean(PREF_SAVE_HISTORY, false)
+
+    fun setEnabled(enabled: Boolean) {
+        settingsPrefs.edit().putBoolean(PREF_SAVE_HISTORY, enabled).apply()
     }
 
     fun getHistory(): List<HistoryItem> {
@@ -34,6 +43,8 @@ class HistoryManager(context: Context) {
     }
 
     fun addHistoryItem(originalText: String, newText: String, commandTrigger: String) {
+        // When "Save history" is off, never write anything.
+        if (!isEnabled()) return
         val currentHistory = getHistory().toMutableList()
         val newItem = HistoryItem(
             originalText = originalText,
@@ -41,14 +52,14 @@ class HistoryManager(context: Context) {
             commandTrigger = commandTrigger
         )
         currentHistory.add(0, newItem) // Add to the top
-        
+
         // Trim if necessary
         val trimmed = if (currentHistory.size > MAX_HISTORY_ITEMS) {
             currentHistory.subList(0, MAX_HISTORY_ITEMS)
         } else {
             currentHistory
         }
-        
+
         saveHistory(trimmed)
     }
 
@@ -57,8 +68,9 @@ class HistoryManager(context: Context) {
         saveHistory(currentHistory)
     }
 
+    /** Deletes all history right away (written synchronously). */
     fun clearHistory() {
-        prefs.edit().remove(PREF_HISTORY).apply()
+        prefs.edit().clear().commit()
     }
 
     private fun saveHistory(items: List<HistoryItem>) {
