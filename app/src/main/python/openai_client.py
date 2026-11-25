@@ -15,12 +15,21 @@ def get_user_agent() -> str:
         return "BuddyApp/1.0"
 
 
+HTTPS_ERROR = "Custom endpoint must start with https://"
+
+
+def _is_https(endpoint: str) -> bool:
+    return endpoint.strip().lower().startswith("https://")
+
+
 def validate_key(api_key: str, endpoint: str) -> dict:
     """
     Validate key by listing models on the custom endpoint.
     Returns {"success": True} or {"success": False, "error": "message"}
     """
-    base_url = endpoint.rstrip("/")
+    if not _is_https(endpoint):
+        return {"success": False, "error": HTTPS_ERROR}
+    base_url = endpoint.strip().rstrip("/")
     url = f"{base_url}/models"
     req = urllib.request.Request(url, method="GET")
     req.add_header("Authorization", f"Bearer {api_key}")
@@ -54,7 +63,9 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
     Call OpenAI-compatible API to transform text.
     Returns {"success": True, "result": "..."} or {"success": False, "error": "..."}
     """
-    base_url = endpoint.rstrip("/")
+    if not _is_https(endpoint):
+        return {"success": False, "error": HTTPS_ERROR}
+    base_url = endpoint.strip().rstrip("/")
     url = f"{base_url}/chat/completions"
 
     system_text = (

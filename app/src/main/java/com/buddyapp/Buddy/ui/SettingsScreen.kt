@@ -194,9 +194,23 @@ fun SettingsScreen() {
                             value = customEndpoint,
                             onValueChange = {
                                 customEndpoint = it
-                                prefs.edit().putString("custom_endpoint", it).apply()
+                                // Only save HTTPS URLs (or empty). Your key and text
+                                // must never travel unencrypted.
+                                val trimmed = it.trim()
+                                if (trimmed.isEmpty() || trimmed.startsWith("https://", ignoreCase = true)) {
+                                    prefs.edit().putString("custom_endpoint", trimmed).apply()
+                                }
                             },
                             placeholder = { Text("https://api.example.com/v1") },
+                            isError = customEndpoint.isNotBlank() &&
+                                !customEndpoint.trim().startsWith("https://", ignoreCase = true),
+                            supportingText = {
+                                if (customEndpoint.isNotBlank() &&
+                                    !customEndpoint.trim().startsWith("https://", ignoreCase = true)
+                                ) {
+                                    Text("Must start with https:// (not saved)")
+                                }
+                            },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
