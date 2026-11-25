@@ -47,15 +47,11 @@ fun ApiUsageScreen(navController: NavController, keyIndex: Int) {
     val key = keys[keyIndex]
     val stats = usageManager.getStats(key)
 
-    val prefs = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
-    val providerType = prefs.getString("provider_type", "gemini") ?: "gemini"
 
-    val providerName = when {
-        key.startsWith("AIza")   -> "Gemini"
-        key.startsWith("gsk_")   -> "Groq"
-        key.startsWith("sk-ant") -> "Anthropic"
-        key.startsWith("sk-")    -> "OpenAI"
-        else -> if (providerType == "custom") "Custom" else "Unknown Provider"
+    val providerName = when (KeyManager.providerForKey(key)) {
+        KeyManager.PROVIDER_GEMINI -> "Gemini"
+        KeyManager.PROVIDER_GROQ -> "Groq"
+        else -> "Custom"
     }
     
     val formattedDate = if (stats.lastUsedTimestamp > 0) {

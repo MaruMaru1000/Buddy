@@ -57,7 +57,7 @@ fun KeysScreen(navController: NavController? = null) {
     var testResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
-    val providerType = remember { prefs.getString("provider_type", "gemini") ?: "gemini" }
+    val providerType = remember { prefs.getString("provider_type", KeyManager.PROVIDER_CUSTOM) ?: KeyManager.PROVIDER_CUSTOM }
     val customEndpoint = remember { prefs.getString("custom_endpoint", "") ?: "" }
     val uriHandler = LocalUriHandler.current
 
@@ -490,12 +490,10 @@ private fun KeyCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                val providerName = when {
-                    keyStr.startsWith("AIza")   -> "Gemini"
-                    keyStr.startsWith("gsk_")   -> "Groq"
-                    keyStr.startsWith("sk-ant") -> "Anthropic"
-                    keyStr.startsWith("sk-")    -> "OpenAI"
-                    else -> if (providerType == "custom") "Custom" else "Unknown Provider"
+                val providerName = when (KeyManager.providerForKey(keyStr)) {
+                    KeyManager.PROVIDER_GEMINI -> "Gemini"
+                    KeyManager.PROVIDER_GROQ -> "Groq"
+                    else -> "Custom"
                 }
                 
                 Text(

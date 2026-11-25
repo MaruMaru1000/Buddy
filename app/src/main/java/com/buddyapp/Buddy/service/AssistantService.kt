@@ -140,7 +140,7 @@ class AssistantService : AccessibilityService() {
 
     private fun processCommand(source: AccessibilityNodeInfo, text: String, command: Command) {
         val prefs = applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val providerType = prefs.getString("provider_type", "gemini") ?: "gemini"
+        val providerType = prefs.getString("provider_type", KeyManager.PROVIDER_CUSTOM) ?: KeyManager.PROVIDER_CUSTOM
         val model: String
         val endpoint: String
 
