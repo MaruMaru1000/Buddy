@@ -27,6 +27,7 @@ import com.buddyapp.Buddy.api.PythonBridge
 import com.buddyapp.Buddy.manager.CommandManager
 import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.manager.KeyManager
+import com.buddyapp.Buddy.manager.ReplyPrompt
 import com.buddyapp.Buddy.manager.UsageManager
 import com.buddyapp.Buddy.model.Command
 import kotlinx.coroutines.CancellationException
@@ -166,6 +167,16 @@ class AssistantService : AccessibilityService() {
         
         val temperature = prefs.getFloat("temperature", 0.5f).toDouble()
 
+        // /reply: split "message || notes" and wrap both as data blocks.
+        val isReply = command.builtInName == "reply"
+        val aiInput = if (isReply) {
+            ReplyPrompt.buildInput(text) ?: run {
+                serviceScope.launch { showToast("Nothing to reply to") }
+                isProcessing = false
+                return
+            }
+        } else text
+
         currentJob = serviceScope.launch {
             val originalText = text
             var spinnerJob: Job? = null
@@ -185,16 +196,18 @@ class AssistantService : AccessibilityService() {
 
                         // ── Python does the AI call ──────────────────────────
                         val result = when (providerType) {
-                            "custom" -> PythonBridge.openaiGenerate(command.prompt, text, key, model, temperature, endpoint)
-                            "groq"   -> PythonBridge.groqGenerate(command.prompt, text, key, model, temperature)
-                            else     -> PythonBridge.geminiGenerate(command.prompt, text, key, model, temperature)
+                            "custom" -> PythonBridge.openaiGenerate(command.prompt, aiInput, key, model, temperature, endpoint)
+                            "groq"   -> PythonBridge.groqGenerate(command.prompt, aiInput, key, model, temperature)
+                            else     -> PythonBridge.geminiGenerate(command.prompt, aiInput, key, model, temperature)
                         }
 
                         usageManager.recordRequest(key, result.isSuccess)
 
                         if (result.isSuccess) {
                             spinnerJob?.cancel(); spinnerJob = null
-                            val generatedText = result.getOrThrow()
+                            val generatedText = result.getOrThrow().let {
+                                if (isReply) ReplyPrompt.cleanOutput(it) else it
+                            }
                             if (replaceText(source, generatedText)) {
                                 rememberForUndo(source, originalText)
                                 historyManager.addHistoryItem(originalText, generatedText, command.trigger)

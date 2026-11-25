@@ -24,7 +24,7 @@ class CommandManager(context: Context) {
         "formal" to "Rewrite in a formal, professional tone. CRITICAL: You MUST preserve the exact original language, alphabet, and script. For example, if the input is in Hinglish (Hindi written in Latin alphabet), you MUST output in Hinglish. Do NOT translate to Devanagari or any other script. Do not change the original language. Return only the rewritten text.",
         "casual" to "Rewrite in a casual, friendly tone. CRITICAL: You MUST preserve the exact original language, alphabet, and script. For example, if the input is in Hinglish (Hindi written in Latin alphabet), you MUST output in Hinglish. Do NOT translate to Devanagari or any other script. Do not change the original language. Return only the rewritten text.",
         "emoji" to "Add relevant emojis throughout. CRITICAL: You MUST preserve the exact original language, alphabet, and script. For example, if the input is in Hinglish (Hindi written in Latin alphabet), you MUST output in Hinglish. Do NOT translate to Devanagari or any other script. Do not change the original language. Return only the text with emojis added.",
-        "reply" to "Generate a contextual reply to this message. CRITICAL: You MUST preserve the exact original language, alphabet, and script. For example, if the input is in Hinglish (Hindi written in Latin alphabet), you MUST output in Hinglish. Do NOT translate to Devanagari or any other script. Do not change the original language. Return only the reply.",
+        "reply" to ReplyPrompt.PROMPT,
         "undo" to "Undo the last replacement and restore the original text."
     )
 
@@ -81,9 +81,9 @@ class CommandManager(context: Context) {
                 val overrideObj = overrides.getJSONObject(name)
                 val newTrigger = overrideObj.optString("trigger", "$prefix$name")
                 val newPrompt = overrideObj.optString("prompt", prompt)
-                Command(newTrigger, newPrompt, true)
+                Command(newTrigger, newPrompt, true, builtInName = name)
             } else {
-                Command("$prefix$name", prompt, true)
+                Command("$prefix$name", prompt, true, builtInName = name)
             }
         }
     }
