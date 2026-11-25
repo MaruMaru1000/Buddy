@@ -6,6 +6,13 @@ Handles any OpenAI-compatible endpoint (OpenRouter, local Ollama, etc.)
 import urllib.request
 import urllib.error
 import json
+import uuid
+from urllib.parse import urlparse
+
+
+def _is_opencode(endpoint: str) -> bool:
+    host = (urlparse(endpoint.strip()).hostname or "").lower()
+    return host == "opencode.ai" or host.endswith(".opencode.ai")
 
 def get_user_agent() -> str:
     try:
@@ -96,6 +103,10 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", f"Bearer {api_key}")
     req.add_header("User-Agent", get_user_agent())
+    if _is_opencode(endpoint):
+        # OpenCode Go rejects chat requests without a session ID.
+        # Each command is its own one-shot conversation, so use a fresh ID.
+        req.add_header("x-opencode-session", str(uuid.uuid4()))
 
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
