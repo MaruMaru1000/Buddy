@@ -430,7 +430,7 @@ Buddy is designed with a strict **privacy-first** philosophy:
 - ✅ Data flows **directly** from your device → your configured AI provider, nowhere else
 - ✅ Accessibility Service only reads text when a trigger character is detected (not a keylogger)
 - ✅ Password fields are **explicitly blocked** — Buddy never reads or modifies password inputs
-- ✅ No clipboard snooping — clipboard is only touched as a fallback injection method, and the original clip is restored within 500ms
+- ✅ Never touches the clipboard — text is only replaced with `ACTION_SET_TEXT`; if an app refuses that, Buddy shows an error instead
 
 ### Android Keystore Encryption Details
 

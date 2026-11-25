@@ -3,8 +3,6 @@ package com.buddyapp.Buddy.service
 import android.accessibilityservice.AccessibilityService
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -59,6 +57,8 @@ class AssistantService : AccessibilityService() {
     private var cachedPrefix = CommandManager.DEFAULT_PREFIX
     private var currentJob: Job? = null
     @Volatile private var lastOriginalText: String? = null
+    // The field that lastOriginalText belongs to. /undo only works in this same field.
+    @Volatile private var lastEditedNode: AccessibilityNodeInfo? = null
     private var lastTriggerRefresh = 0L
     private var currentOverlayToast: View? = null
     private var dismissRunnable: Runnable? = null
@@ -77,6 +77,7 @@ class AssistantService : AccessibilityService() {
         const val TOAST_BOTTOM_MARGIN_DP = 64
         const val TOAST_ANIM_DURATION_MS = 300L
         const val TOAST_SLIDE_DISTANCE_DP = 40
+        const val REPLACE_FAILED_MSG = "Couldn't replace text in this app"
     }
 
     override fun onServiceConnected() {
@@ -150,6 +151,11 @@ class AssistantService : AccessibilityService() {
                 isProcessing = false
                 return
             }
+            if (!endpoint.startsWith("https://", ignoreCase = true)) {
+                serviceScope.launch { showToast("Custom endpoint must start with https://") }
+                isProcessing = false
+                return
+            }
         } else if (providerType == "groq") {
             model = prefs.getString("groq_model", "llama-3.3-70b-versatile") ?: "llama-3.3-70b-versatile"
             endpoint = ""
@@ -188,11 +194,16 @@ class AssistantService : AccessibilityService() {
 
                         if (result.isSuccess) {
                             spinnerJob?.cancel(); spinnerJob = null
-                            lastOriginalText = originalText
                             val generatedText = result.getOrThrow()
-                            replaceText(source, generatedText)
-                            historyManager.addHistoryItem(originalText, generatedText, command.trigger)
-                            performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            if (replaceText(source, generatedText)) {
+                                rememberForUndo(source, originalText)
+                                historyManager.addHistoryItem(originalText, generatedText, command.trigger)
+                                performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            } else {
+                                replaceText(source, originalText)
+                                performHapticFeedback(HapticFeedbackConstants.REJECT)
+                                showToast(REPLACE_FAILED_MSG)
+                            }
                             succeeded = true
                             break
                         }
@@ -258,14 +269,18 @@ class AssistantService : AccessibilityService() {
         currentJob = serviceScope.launch {
             try {
                 val previousText = lastOriginalText
-                if (previousText == null) {
+                // Only undo in the same field Buddy last changed, so text from
+                // one app/field is never put into another.
+                if (previousText == null || lastEditedNode != source) {
                     replaceText(source, currentText)
                     performHapticFeedback(HapticFeedbackConstants.REJECT)
-                    showToast("Nothing to undo")
-                } else {
-                    lastOriginalText = currentText
-                    replaceText(source, previousText)
+                    showToast("Nothing to undo in this field")
+                } else if (replaceText(source, previousText)) {
+                    rememberForUndo(source, currentText)
                     performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                } else {
+                    performHapticFeedback(HapticFeedbackConstants.REJECT)
+                    showToast(REPLACE_FAILED_MSG)
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { showToast("Could not undo")
@@ -280,10 +295,14 @@ class AssistantService : AccessibilityService() {
     private fun handleTextReplacer(source: AccessibilityNodeInfo, newText: String, originalText: String, command: Command) {
         currentJob = serviceScope.launch {
             try {
-                lastOriginalText = originalText
-                replaceText(source, newText)
-                historyManager.addHistoryItem(originalText, newText, command.trigger)
-                performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                if (replaceText(source, newText)) {
+                    rememberForUndo(source, originalText)
+                    historyManager.addHistoryItem(originalText, newText, command.trigger)
+                    performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                } else {
+                    performHapticFeedback(HapticFeedbackConstants.REJECT)
+                    showToast(REPLACE_FAILED_MSG)
+                }
             } catch (e: Exception) {
                 showToast("Buddy Error: ${e.message}")
             } finally {
@@ -294,23 +313,21 @@ class AssistantService : AccessibilityService() {
         }
     }
 
-    private suspend fun replaceText(source: AccessibilityNodeInfo, newText: String) = withContext(Dispatchers.Main) {
+    private fun rememberForUndo(source: AccessibilityNodeInfo, text: String) {
+        lastOriginalText = text
+        lastEditedNode = source
+    }
+
+    /**
+     * Replaces the field text with ACTION_SET_TEXT only.
+     * No clipboard, no paste, no other action. Returns false if the app refused it.
+     */
+    private suspend fun replaceText(source: AccessibilityNodeInfo, newText: String): Boolean = withContext(Dispatchers.Main) {
         source.refresh()
+        if (source.isPassword) return@withContext false
         val bundle = Bundle()
         bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newText)
-        val success = source.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-        if (!success) {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val oldClip = clipboard.primaryClip
-            clipboard.setPrimaryClip(ClipData.newPlainText("Buddy Result", newText))
-            val selectArgs = Bundle().apply {
-                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
-                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, source.text?.length ?: 0)
-            }
-            source.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectArgs)
-            source.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-            handler.postDelayed({ if (oldClip != null) clipboard.setPrimaryClip(oldClip) }, 500)
-        }
+        source.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
     }
 
     private fun setFieldText(source: AccessibilityNodeInfo, text: String) {
