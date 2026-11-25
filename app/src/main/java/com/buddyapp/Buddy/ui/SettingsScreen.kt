@@ -695,17 +695,6 @@ fun SettingsScreen() {
             )
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // About (no links, no network)
-        SettingsSection(title = "About", icon = Icons.Outlined.Info) {
-            Text(
-                text = "Personal fork of Buddy by Deepender25 (MIT License).",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
         Spacer(modifier = Modifier.height(40.dp)) // bottom padding
     }
 }
