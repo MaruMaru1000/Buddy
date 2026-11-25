@@ -70,7 +70,7 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
         },
         "contents": [
             {
-                "parts": [{"text": f"---BEGIN TEXT---\n{text}\n---END TEXT---"}]
+                "parts": [{"text": f"---BEGIN TEXT---\n{_strip_markers(text)}\n---END TEXT---"}]
             }
         ],
         "generationConfig": {
@@ -136,3 +136,8 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
             return {"success": False, "error": f"Error {code}: {body}"}
     except Exception as ex:
         return {"success": False, "error": str(ex)}
+
+
+def _strip_markers(text: str) -> str:
+    """Remove our block markers from user text so it cannot close the block early."""
+    return text.replace("---BEGIN TEXT---", "").replace("---END TEXT---", "")
