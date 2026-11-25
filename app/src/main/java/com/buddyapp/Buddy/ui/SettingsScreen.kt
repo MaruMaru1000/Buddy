@@ -1,5 +1,6 @@
 package com.buddyapp.Buddy.ui
 
+import com.buddyapp.Buddy.manager.KeyManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -28,6 +29,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.buddyapp.Buddy.manager.CommandManager
+import kotlinx.coroutines.launch
+import com.buddyapp.Buddy.api.PythonBridge
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.buddyapp.Buddy.manager.HistoryManager
 import com.buddyapp.Buddy.ui.components.ScreenTitle
 
@@ -38,7 +44,7 @@ fun SettingsScreen() {
     val haptic = LocalHapticFeedback.current
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
 
-    var providerType by remember { mutableStateOf(prefs.getString("provider_type", "gemini") ?: "gemini") }
+    var providerType by remember { mutableStateOf(prefs.getString("provider_type", KeyManager.PROVIDER_CUSTOM) ?: KeyManager.PROVIDER_CUSTOM) }
     var temperature by remember { mutableFloatStateOf(prefs.getFloat("temperature", 0.5f)) }
 
     // Gemini settings
@@ -58,6 +64,12 @@ fun SettingsScreen() {
     // Custom provider settings
     var customEndpoint by remember { mutableStateOf(prefs.getString("custom_endpoint", "") ?: "") }
     var customModel by remember { mutableStateOf(prefs.getString("custom_model", "") ?: "") }
+    val keyManager = remember { KeyManager(context) }
+    var customKeyInput by remember { mutableStateOf("") }
+    var customKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size) }
+    var customKeyStatus by remember { mutableStateOf<String?>(null) }
+    var isTestingCustomKey by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // History
     val historyManager = remember { HistoryManager(context) }
@@ -192,7 +204,7 @@ fun SettingsScreen() {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Base API URL for OpenAI compatible REST endpoints",
+                            text = "Base URL of your OpenAI-compatible provider, usually ending in /v1. Must start with https://",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -203,9 +215,9 @@ fun SettingsScreen() {
                                 customEndpoint = it
                                 // Only save HTTPS URLs (or empty). Your key and text
                                 // must never travel unencrypted.
-                                val trimmed = it.trim()
-                                if (trimmed.isEmpty() || trimmed.startsWith("https://", ignoreCase = true)) {
-                                    prefs.edit().putString("custom_endpoint", trimmed).apply()
+                                val cleaned = normalizeEndpoint(it)
+                                if (cleaned.isEmpty() || cleaned.startsWith("https://", ignoreCase = true)) {
+                                    prefs.edit().putString("custom_endpoint", cleaned).apply()
                                 }
                             },
                             placeholder = { Text("https://api.example.com/v1") },
@@ -238,7 +250,7 @@ fun SettingsScreen() {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Exact model identifier given by your provider",
+                            text = "Exact model name from your provider's model list",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -247,9 +259,9 @@ fun SettingsScreen() {
                             value = customModel,
                             onValueChange = {
                                 customModel = it
-                                prefs.edit().putString("custom_model", it).apply()
+                                prefs.edit().putString("custom_model", it.trim()).apply()
                             },
-                            placeholder = { Text("e.g. gpt-4o, claude-3") },
+                            placeholder = { Text("model-name") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -260,6 +272,88 @@ fun SettingsScreen() {
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
                             )
                         )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Text(
+                            text = "API Key",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (customKeyCount == 0) "No key saved yet. The key is tested against the endpoint above, then stored encrypted."
+                                   else "$customKeyCount key(s) saved (encrypted). Manage them in the Keys tab.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = customKeyInput,
+                            onValueChange = { customKeyInput = it; customKeyStatus = null },
+                            placeholder = { Text("Paste API key") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                autoCorrectEnabled = false
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val key = customKeyInput.trim()
+                                val endpoint = normalizeEndpoint(customEndpoint)
+                                when {
+                                    KeyManager.providerForKey(key) != KeyManager.PROVIDER_CUSTOM ->
+                                        customKeyStatus = "This looks like a Gemini or Groq key. Add it in the Keys tab."
+                                    !endpoint.startsWith("https://", ignoreCase = true) ->
+                                        customKeyStatus = "Set an https:// endpoint first"
+                                    keyManager.getKeys().contains(key) ->
+                                        customKeyStatus = "This key is already saved"
+                                    else -> {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        isTestingCustomKey = true
+                                        customKeyStatus = null
+                                        scope.launch {
+                                            val result = PythonBridge.openaiValidateKey(key, endpoint)
+                                            isTestingCustomKey = false
+                                            customKeyStatus = if (result.isFailure) {
+                                                result.exceptionOrNull()?.message ?: "Validation failed"
+                                            } else if (!keyManager.addKey(key)) {
+                                                "Could not encrypt the key. It was not saved."
+                                            } else {
+                                                customKeyInput = ""
+                                                customKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size
+                                                "Key works and is saved"
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = customKeyInput.isNotBlank() && !isTestingCustomKey,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (isTestingCustomKey) "Testing..." else "Test & save key")
+                        }
+                        customKeyStatus?.let { msg ->
+                            Text(
+                                text = msg,
+                                fontSize = 12.sp,
+                                color = if (msg.startsWith("Key works")) MaterialTheme.colorScheme.tertiary
+                                        else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -574,4 +668,16 @@ fun CleanDropdown(
             }
         }
     }
+}
+
+/**
+ * Trims the endpoint and cuts a pasted full URL back to the base URL,
+ * e.g. "https://host/v1/chat/completions/" -> "https://host/v1".
+ */
+private fun normalizeEndpoint(raw: String): String {
+    var url = raw.trim().trimEnd('/')
+    if (url.endsWith("/chat/completions", ignoreCase = true)) {
+        url = url.dropLast("/chat/completions".length).trimEnd('/')
+    }
+    return url
 }

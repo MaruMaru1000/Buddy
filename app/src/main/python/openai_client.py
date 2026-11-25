@@ -22,6 +22,14 @@ def _is_https(endpoint: str) -> bool:
     return endpoint.strip().lower().startswith("https://")
 
 
+def _base_url(endpoint: str) -> str:
+    """Base URL without trailing slash or a pasted /chat/completions suffix."""
+    url = endpoint.strip().rstrip("/")
+    if url.lower().endswith("/chat/completions"):
+        url = url[: -len("/chat/completions")].rstrip("/")
+    return url
+
+
 def validate_key(api_key: str, endpoint: str) -> dict:
     """
     Validate key by listing models on the custom endpoint.
@@ -29,7 +37,7 @@ def validate_key(api_key: str, endpoint: str) -> dict:
     """
     if not _is_https(endpoint):
         return {"success": False, "error": HTTPS_ERROR}
-    base_url = endpoint.strip().rstrip("/")
+    base_url = _base_url(endpoint)
     url = f"{base_url}/models"
     req = urllib.request.Request(url, method="GET")
     req.add_header("Authorization", f"Bearer {api_key}")
@@ -65,7 +73,7 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
     """
     if not _is_https(endpoint):
         return {"success": False, "error": HTTPS_ERROR}
-    base_url = endpoint.strip().rstrip("/")
+    base_url = _base_url(endpoint)
     url = f"{base_url}/chat/completions"
 
     system_text = (
