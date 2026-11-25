@@ -72,6 +72,10 @@ fun SettingsScreen() {
     var customKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_CUSTOM).size) }
     val scope = rememberCoroutineScope()
 
+    // Gemini / Groq keys saved from Settings
+    var geminiKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_GEMINI).size) }
+    var groqKeyCount by remember { mutableIntStateOf(keyManager.getKeysFor(KeyManager.PROVIDER_GROQ).size) }
+
     // Claude settings
     var selectedClaudeModel by remember {
         mutableStateOf(prefs.getString("claude_model", Providers.DEFAULT_CLAUDE_MODEL) ?: Providers.DEFAULT_CLAUDE_MODEL)
@@ -266,6 +270,45 @@ fun SettingsScreen() {
                             )
                         }
                         ModelsNote(modelsNote)
+
+                        Spacer(modifier = Modifier.height(20.dp))
+                        val isGemini = providerType == KeyManager.PROVIDER_GEMINI
+                        val keyCount = if (isGemini) geminiKeyCount else groqKeyCount
+                        // key(): a fresh, empty field when switching between Gemini and Groq.
+                        key(providerType) {
+                            KeyEntry(
+                                description = when {
+                                    keyCount > 0 -> "$keyCount key(s) saved (encrypted). Manage them in the Keys tab."
+                                    isGemini -> "Get a key at aistudio.google.com (starts with AIza or AQ.). It is tested, then stored encrypted."
+                                    else -> "Get a key at console.groq.com (starts with gsk_). It is tested, then stored encrypted."
+                                },
+                                placeholder = if (isGemini) "AIza... or AQ...." else "gsk_..."
+                            ) { key ->
+                                val wanted = if (isGemini) KeyManager.PROVIDER_GEMINI else KeyManager.PROVIDER_GROQ
+                                val actual = KeyManager.providerForKey(key)
+                                when {
+                                    actual != wanted ->
+                                        false to (if (isGemini) "Gemini keys start with AIza or AQ."
+                                                  else "Groq keys start with gsk_")
+                                    keyManager.getKeys().contains(key) ->
+                                        false to "This key is already saved"
+                                    else -> {
+                                        val result = if (isGemini) PythonBridge.geminiValidateKey(key)
+                                                     else PythonBridge.groqValidateKey(key)
+                                        if (result.isFailure) {
+                                            false to (result.exceptionOrNull()?.message ?: "Validation failed")
+                                        } else if (!keyManager.addKey(key)) {
+                                            false to "Could not encrypt the key. It was not saved."
+                                        } else {
+                                            geminiKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_GEMINI).size
+                                            groqKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_GROQ).size
+                                            modelsRefresh++ // load the model list now that there's a key
+                                            true to "Key works and is saved"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
