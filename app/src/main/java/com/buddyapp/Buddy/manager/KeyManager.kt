@@ -23,6 +23,21 @@ class KeyManager(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val IV_SEPARATOR = "]"
         private const val PREF_KEY_ARRAY = "keys_array"
+
+        const val PROVIDER_GEMINI = "gemini"
+        const val PROVIDER_GROQ = "groq"
+        const val PROVIDER_CUSTOM = "custom"
+
+        /**
+         * Which provider a key belongs to, decided by its prefix.
+         * A key is only ever sent to its own provider.
+         * Anything that is not a Gemini or Groq key is a custom-endpoint key.
+         */
+        fun providerForKey(key: String): String = when {
+            key.startsWith("AIza") -> PROVIDER_GEMINI
+            key.startsWith("gsk_") -> PROVIDER_GROQ
+            else -> PROVIDER_CUSTOM
+        }
     }
 
     private val rateLimitedKeys = mutableMapOf<String, Long>()
@@ -62,9 +77,10 @@ class KeyManager(context: Context) {
         }
     }
 
-    private fun encrypt(plainText: String): String {
+    /** Returns null if encryption is not possible. Never falls back to plain text. */
+    private fun encrypt(plainText: String): String? {
         return try {
-            val secretKey = getSecretKey() ?: return plainText // Fallback to plain text if keystore fails
+            val secretKey = getSecretKey() ?: return null
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
             val iv = cipher.iv
@@ -74,7 +90,7 @@ class KeyManager(context: Context) {
             "$ivString$IV_SEPARATOR$cipherTextString"
         } catch (e: Exception) {
             e.printStackTrace()
-            plainText // Fallback
+            null
         }
     }
 
@@ -117,19 +133,23 @@ class KeyManager(context: Context) {
         return list
     }
 
-    private fun saveKeys(keys: List<String>) {
+    /** Returns false (and writes nothing) if the keys could not be encrypted. */
+    private fun saveKeys(keys: List<String>): Boolean {
         val arr = JSONArray(keys)
-        val encryptedStr = encrypt(arr.toString())
+        val encryptedStr = encrypt(arr.toString()) ?: return false
         prefs.edit().putString(PREF_KEY_ARRAY, encryptedStr).apply()
+        return true
     }
 
-    fun addKey(key: String) {
+    /** Returns false if the key could not be stored encrypted (it is then not stored at all). */
+    fun addKey(key: String): Boolean {
         val keys = getKeys().toMutableList()
         if (!keys.contains(key)) {
             keys.add(key)
-            saveKeys(keys)
+            if (!saveKeys(keys)) return false
         }
         invalidKeys.remove(key)
+        return true
     }
 
     fun removeKey(key: String) {
@@ -140,8 +160,12 @@ class KeyManager(context: Context) {
         invalidKeys.remove(key)
     }
 
-    fun getNextKey(): String? {
-        val keys = getKeys()
+    /** Keys that belong to [provider] (see [providerForKey]). */
+    fun getKeysFor(provider: String): List<String> =
+        getKeys().filter { providerForKey(it) == provider }
+
+    fun getNextKey(provider: String): String? {
+        val keys = getKeysFor(provider)
         if (keys.isEmpty()) return null
         
         val now = System.currentTimeMillis()
@@ -166,8 +190,8 @@ class KeyManager(context: Context) {
         invalidKeys.add(key)
     }
 
-    fun getShortestWaitTimeMs(): Long? {
-        val keys = getKeys()
+    fun getShortestWaitTimeMs(provider: String): Long? {
+        val keys = getKeysFor(provider)
         if (keys.isEmpty()) return null
         val now = System.currentTimeMillis()
         val waits = keys.filter { !invalidKeys.contains(it) }

@@ -165,12 +165,13 @@ class AssistantService : AccessibilityService() {
             var spinnerJob: Job? = null
             try {
                 withTimeout(90_000) {
-                    val maxAttempts = keyManager.getKeys().size.coerceAtLeast(1)
+                    // Only keys that belong to the active provider are ever sent to it.
+                    val maxAttempts = keyManager.getKeysFor(providerType).size.coerceAtLeast(1)
                     var lastErrorMsg: String? = null
                     var succeeded = false
 
                     for (attempt in 0 until maxAttempts) {
-                        val key = keyManager.getNextKey() ?: break
+                        val key = keyManager.getNextKey(providerType) ?: break
 
                         if (spinnerJob == null) {
                             spinnerJob = startInlineSpinner(source, originalText)
@@ -219,12 +220,12 @@ class AssistantService : AccessibilityService() {
                         when {
                             lastErrorMsg != null -> showToast("Buddy Error: $lastErrorMsg")
                             else -> {
-                                val waitMs = keyManager.getShortestWaitTimeMs()
+                                val waitMs = keyManager.getShortestWaitTimeMs(providerType)
                                 if (waitMs != null) {
                                     val waitSec = ((waitMs + 999) / 1000).coerceAtLeast(1)
                                     showToast("API key rate limited. Try again in ${waitSec}s")
-                                } else if (keyManager.getKeys().isEmpty()) {
-                                    showToast("No API keys configured")
+                                } else if (keyManager.getKeysFor(providerType).isEmpty()) {
+                                    showToast("No API key for the selected provider")
                                 } else {
                                     showToast("All API keys are invalid. Please check your keys")
                                 }
