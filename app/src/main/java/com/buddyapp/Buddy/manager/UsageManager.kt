@@ -3,6 +3,7 @@ package com.buddyapp.Buddy.manager
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONObject
+import java.security.MessageDigest
 
 data class KeyUsageStats(
     val totalRequests: Int = 0,
@@ -14,8 +15,38 @@ data class KeyUsageStats(
         get() = if (totalRequests > 0) (failedRequests.toFloat() / totalRequests) * 100f else 0f
 }
 
+/**
+ * Per-key request counters.
+ * Entries are stored under a SHA-256 hash of the API key, never the key itself.
+ */
 class UsageManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("api_usage_prefs", Context.MODE_PRIVATE)
+
+    private companion object {
+        const val ENTRY_PREFIX = "sha256:"
+    }
+
+    init {
+        migrateRawKeyEntries()
+    }
+
+    /** Older versions used the raw API key as the entry name. Move those to hashed names. */
+    private fun migrateRawKeyEntries() {
+        val rawEntries = prefs.all.filterKeys { !it.startsWith(ENTRY_PREFIX) }
+        if (rawEntries.isEmpty()) return
+        val editor = prefs.edit()
+        for ((rawKey, value) in rawEntries) {
+            val hashed = entryName(rawKey)
+            if (value is String && !prefs.contains(hashed)) editor.putString(hashed, value)
+            editor.remove(rawKey)
+        }
+        editor.commit()
+    }
+
+    private fun entryName(apiKey: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(apiKey.toByteArray(Charsets.UTF_8))
+        return ENTRY_PREFIX + digest.joinToString("") { "%02x".format(it) }
+    }
 
     fun recordRequest(key: String, success: Boolean) {
         val stats = getStats(key)
@@ -29,11 +60,11 @@ class UsageManager(context: Context) {
         obj.put("failed", newFailed)
         obj.put("lastUsed", System.currentTimeMillis())
 
-        prefs.edit().putString(key, obj.toString()).apply()
+        prefs.edit().putString(entryName(key), obj.toString()).apply()
     }
 
     fun getStats(key: String): KeyUsageStats {
-        val jsonStr = prefs.getString(key, null) ?: return KeyUsageStats()
+        val jsonStr = prefs.getString(entryName(key), null) ?: return KeyUsageStats()
         return try {
             val obj = JSONObject(jsonStr)
             KeyUsageStats(
@@ -48,6 +79,6 @@ class UsageManager(context: Context) {
     }
 
     fun deleteStats(key: String) {
-        prefs.edit().remove(key).apply()
+        prefs.edit().remove(entryName(key)).apply()
     }
 }
