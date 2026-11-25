@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kept as narrow as possible:
+  - Only text-changed events.
+  - canRetrieveWindowContent is required: without it event.source is null and
+    ACTION_SET_TEXT cannot be performed.
+  - No flagRetrieveInteractiveWindows (we never read the window list).
+  - No isAccessibilityTool (that would also expose views apps mark as
+    accessibilityDataSensitive).
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagDefault"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_desc"
-    android:isAccessibilityTool="true"
     android:notificationTimeout="100" />
