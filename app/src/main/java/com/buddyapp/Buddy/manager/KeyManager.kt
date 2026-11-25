@@ -44,7 +44,8 @@ class KeyManager(context: Context) {
          */
         fun providerForKey(key: String): String = when {
             key.startsWith(OPENCODE_TAG) -> PROVIDER_OPENCODE
-            key.startsWith("AIza") -> PROVIDER_GEMINI
+            // Gemini: older keys start with AIza; AI Studio keys made since mid-2026 start with "AQ."
+            key.startsWith("AIza") || key.startsWith("AQ.") -> PROVIDER_GEMINI
             key.startsWith("gsk_") -> PROVIDER_GROQ
             key.startsWith("sk-ant-") -> PROVIDER_CLAUDE
             else -> PROVIDER_CUSTOM

@@ -5,7 +5,7 @@ plugins {
     id("com.chaquo.python")
 }
 
-val baseVersion = "1.5"
+val baseVersion = "1.6"
 
 // Release signing. The key and its passwords live OUTSIDE the repo, in
 // ~/.gradle/gradle.properties (BUDDY_RELEASE_*). Without them, release
@@ -21,7 +21,7 @@ android {
         applicationId = "com.buddyapp.Buddy"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
+        versionCode = 7
         versionName = "$baseVersion"
 
         vectorDrawables { useSupportLibrary = true }

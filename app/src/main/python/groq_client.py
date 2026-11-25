@@ -132,3 +132,31 @@ def generate(prompt: str, text: str, api_key: str, model: str, temperature: floa
 def _strip_markers(text: str) -> str:
     """Remove our block markers from user text so it cannot close the block early."""
     return text.replace("---BEGIN TEXT---", "").replace("---END TEXT---", "")
+
+
+# Groq models that aren't chat models (speech, safety filters...).
+_GROQ_SKIP = ("whisper", "tts", "guard", "playai", "orpheus")
+
+
+def list_models(api_key: str) -> dict:
+    """
+    Groq chat models this key can use.
+    Returns {"success": True, "models": "id1\nid2"} or {"success": False, "error": "..."}
+    """
+    req = urllib.request.Request(f"{GROQ_BASE_URL}/models", method="GET")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("User-Agent", get_user_agent())
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8")).get("data", [])
+    except urllib.error.HTTPError as e:
+        return {"success": False, "error": f"Error {e.code} loading models"}
+    except Exception as ex:
+        return {"success": False, "error": str(ex)}
+    ids = []
+    for m in data:
+        mid = str(m.get("id", ""))
+        if not mid or m.get("active") is False or any(s in mid.lower() for s in _GROQ_SKIP):
+            continue
+        ids.append(mid)
+    return {"success": True, "models": "\n".join(sorted(set(ids)))}

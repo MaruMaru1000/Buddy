@@ -168,3 +168,21 @@ def generate(prompt: str, text: str, api_key: str, model: str,
 def _strip_markers(text: str) -> str:
     """Remove our block markers from user text so it cannot close the block early."""
     return text.replace("---BEGIN TEXT---", "").replace("---END TEXT---", "")
+
+
+def list_models(api_key: str) -> dict:
+    """
+    Claude models this key can use, in Anthropic's order (newest first).
+    Returns {"success": True, "models": "id1\nid2"} or {"success": False, "error": "..."}
+    """
+    req = urllib.request.Request(f"{BASE_URL}/models?limit=100", method="GET")
+    _headers(req, api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8")).get("data", [])
+    except urllib.error.HTTPError as e:
+        return _http_error(e)
+    except Exception as ex:
+        return {"success": False, "error": str(ex)}
+    ids = [str(m["id"]) for m in data if str(m.get("id", "")).startswith("claude-")]
+    return {"success": True, "models": "\n".join(ids)}

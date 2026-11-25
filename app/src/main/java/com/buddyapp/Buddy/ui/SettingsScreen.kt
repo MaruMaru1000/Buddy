@@ -105,6 +105,36 @@ fun SettingsScreen() {
         }
     }
 
+    // Live model lists for Gemini, Groq and Claude, loaded with the provider's first saved key.
+    // The last list is kept in prefs ("<provider>_models_cache") so it also shows offline.
+    val liveListProviders = listOf(KeyManager.PROVIDER_GEMINI, KeyManager.PROVIDER_GROQ, KeyManager.PROVIDER_CLAUDE)
+    var liveModels by remember {
+        mutableStateOf(liveListProviders.associateWith { p ->
+            prefs.getString("${p}_models_cache", null).orEmpty().lines().filter(String::isNotBlank)
+        })
+    }
+    var modelsNote by remember { mutableStateOf<String?>(null) }
+    var modelsRefresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(providerType, modelsRefresh) {
+        if (providerType !in liveListProviders) return@LaunchedEffect
+        val key = keyManager.getKeysFor(providerType).firstOrNull()
+        if (key == null) {
+            modelsNote = "Add a ${KeyManager.providerName(providerType)} key to load the full model list."
+            return@LaunchedEffect
+        }
+        PythonBridge.listModels(providerType, KeyManager.secretOf(key))
+            .onSuccess { list ->
+                modelsNote = null
+                if (list.isNotEmpty()) {
+                    prefs.edit().putString("${providerType}_models_cache", list.joinToString("\n")).apply()
+                    liveModels = liveModels + (providerType to list)
+                }
+            }
+            .onFailure { modelsNote = "Couldn't load the model list (${it.message}). Showing the saved list." }
+    }
+    /** The provider's live list, or [fallback] if it hasn't loaded yet. */
+    fun modelsFor(provider: String, fallback: List<String>) = liveModels[provider].orEmpty().ifEmpty { fallback }
+
     fun selectProvider(type: String) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         providerType = type
@@ -208,7 +238,7 @@ fun SettingsScreen() {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (providerType == "gemini") "Select from available Gemini models" else "Free tier Open Source models",
+                            text = if (providerType == "gemini") "Models from Google's list for your key" else "Models from Groq's list for your key",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -216,7 +246,7 @@ fun SettingsScreen() {
                         
                         if (providerType == "gemini") {
                             CleanDropdown(
-                                options = geminiModels,
+                                options = modelsFor(KeyManager.PROVIDER_GEMINI, geminiModels),
                                 selectedOption = selectedModel,
                                 onOptionSelected = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -226,7 +256,7 @@ fun SettingsScreen() {
                             )
                         } else {
                             CleanDropdown(
-                                options = groqModels,
+                                options = modelsFor(KeyManager.PROVIDER_GROQ, groqModels),
                                 selectedOption = selectedGroqModel,
                                 onOptionSelected = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -235,6 +265,7 @@ fun SettingsScreen() {
                                 }
                             )
                         }
+                        ModelsNote(modelsNote)
                     }
                 }
             }
@@ -252,7 +283,7 @@ fun SettingsScreen() {
                         "Haiku is fastest and cheapest. Sonnet writes better. Opus is the best and costs the most."
                     )
                     CleanDropdown(
-                        options = Providers.CLAUDE_MODELS,
+                        options = modelsFor(KeyManager.PROVIDER_CLAUDE, Providers.CLAUDE_MODELS),
                         selectedOption = selectedClaudeModel,
                         onOptionSelected = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -260,6 +291,7 @@ fun SettingsScreen() {
                             prefs.edit().putString("claude_model", it).apply()
                         }
                     )
+                    ModelsNote(modelsNote)
                     Spacer(modifier = Modifier.height(20.dp))
                     KeyEntry(
                         description = if (claudeKeyCount == 0) "Needs an API key from console.anthropic.com (starts with sk-ant-). A Claude.ai subscription does not work here."
@@ -279,6 +311,7 @@ fun SettingsScreen() {
                                     false to "Could not encrypt the key. It was not saved."
                                 } else {
                                     claudeKeyCount = keyManager.getKeysFor(KeyManager.PROVIDER_CLAUDE).size
+                                    modelsRefresh++ // load the model list now that there's a key
                                     true to "Key works and is saved"
                                 }
                             }
@@ -890,6 +923,19 @@ fun CleanDropdown(
                 )
             }
         }
+    }
+}
+
+/** Small grey note under a model dropdown (e.g. "Add a key to load the full model list"). */
+@Composable
+private fun ModelsNote(note: String?) {
+    note?.let {
+        Text(
+            text = it,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }
 

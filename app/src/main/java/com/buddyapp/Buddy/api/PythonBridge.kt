@@ -171,6 +171,21 @@ object PythonBridge {
         callPython("openai_client", "list_chat_models", Providers.OPENCODE_ENDPOINT) { map -> map["models"] ?: "" }
     }
 
+    /**
+     * Model list from Gemini, Groq or Claude (needs a key for that provider).
+     * [provider] is a KeyManager.PROVIDER_* value.
+     */
+    suspend fun listModels(provider: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
+        val module = when (provider) {
+            "gemini" -> "gemini_client"
+            "groq" -> "groq_client"
+            "claude" -> "anthropic_client"
+            else -> return@withContext Result.failure(Exception("No model list for this provider"))
+        }
+        callPython(module, "list_models", apiKey) { map -> map["models"] ?: "" }
+            .map { it.lines().filter(String::isNotBlank) }
+    }
+
     /** For models that only take OpenAI's "Responses" format. temperature < 0: none sent. */
     suspend fun openaiResponsesGenerate(
         prompt: String,
