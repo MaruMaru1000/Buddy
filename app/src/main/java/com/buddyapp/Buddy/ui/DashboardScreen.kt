@@ -16,8 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,12 +34,7 @@ import com.buddyapp.Buddy.manager.CommandManager
 import com.buddyapp.Buddy.manager.KeyManager
 import com.buddyapp.Buddy.ui.components.ScreenTitle
 import com.buddyapp.Buddy.ui.components.SlateCard
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 private fun checkServiceEnabled(context: Context): Boolean {
     val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
@@ -61,14 +53,6 @@ fun DashboardScreen() {
     var isServiceEnabled by remember { mutableStateOf(checkServiceEnabled(context)) }
     var keyCount by remember { mutableIntStateOf(keyManager.getKeys().size) }
     var currentPrefix by remember { mutableStateOf(commandManager.getTriggerPrefix()) }
-    var latestVersion by remember { mutableStateOf<String?>(null) }
-    var apkDownloadUrl by remember { mutableStateOf<String?>(null) }
-    val versionName = remember { 
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-        } catch (e: Exception) { "1.0.0" }
-    }
-    val uriHandler = LocalUriHandler.current
 
     // Use the Activity lifecycle so polling only restarts when the app returns
     // from the background, not when switching between navbar tabs.
@@ -76,31 +60,6 @@ fun DashboardScreen() {
 
     LaunchedEffect(activityLifecycle) {
         val lifecycle = activityLifecycle ?: return@LaunchedEffect
-        
-        launch(Dispatchers.IO) {
-            try {
-                val url = URL("https://api.github.com/repos/Deepender25/Buddy/releases/latest")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().readText()
-                    val json = JSONObject(response)
-                    val tagName = json.getString("tag_name").removePrefix("v")
-                    latestVersion = tagName
-                    val assets = json.getJSONArray("assets")
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        if (asset.getString("name").endsWith(".apk")) {
-                            apkDownloadUrl = asset.getString("browser_download_url")
-                            break
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore network errors gracefully
-            }
-        }
         
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
@@ -118,61 +77,13 @@ fun DashboardScreen() {
             .verticalScroll(rememberScrollState())
             .padding(24.dp)
     ) {
-        // Top row: title + GitHub/update icon button
+        // Top row: title
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             ScreenTitle("Dashboard")
-            latestVersion?.let { latest ->
-                val isLatest = versionName == latest || versionName >= latest
-                TextButton(
-                    onClick = {
-                        if (isLatest) {
-                            uriHandler.openUri("https://github.com/Deepender25/Buddy")
-                        } else {
-                            uriHandler.openUri("https://github.com/Deepender25/Buddy/releases/latest")
-                        }
-                    },
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-                ) {
-                    if (isLatest) {
-                        Icon(
-                            imageVector = Icons.Outlined.Star,
-                            contentDescription = "Star on GitHub",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Star",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        BadgedBox(
-                            badge = {
-                                Badge(containerColor = MaterialTheme.colorScheme.primary)
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.SystemUpdateAlt,
-                                contentDescription = "Update Available",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Update",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
         }
 
         if (!isServiceEnabled) {

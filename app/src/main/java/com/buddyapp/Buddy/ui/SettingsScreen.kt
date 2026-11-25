@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -35,7 +34,6 @@ import com.buddyapp.Buddy.ui.components.ScreenTitle
 fun SettingsScreen() {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val uriHandler = LocalUriHandler.current
     val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
 
     var providerType by remember { mutableStateOf(prefs.getString("provider_type", "gemini") ?: "gemini") }
@@ -373,41 +371,13 @@ fun SettingsScreen() {
         
         Spacer(modifier = Modifier.height(28.dp))
 
-        // GitHub Support
+        // About (no links, no network)
         SettingsSection(title = "About", icon = Icons.Outlined.Info) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                onClick = { uriHandler.openUri("https://github.com/Deepender25/Buddy") }
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Star,
-                        contentDescription = "Star",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Support Buddy",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Star this repository on GitHub to show support!",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+            Text(
+                text = "Personal fork of Buddy by Deepender25 (MIT License).",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(modifier = Modifier.height(40.dp)) // bottom padding

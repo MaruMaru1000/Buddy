@@ -20,8 +20,6 @@ A native Android Accessibility Service that injects AI directly into *any* text 
 
 <br/>
 
-[![Latest Release](https://img.shields.io/badge/Release-v1.4-blueviolet?style=flat-square)](#download)
-[![APK Size](https://img.shields.io/badge/APK_Size-~20.4_MB-informational?style=flat-square)](#apk-info)
 [![Min SDK](https://img.shields.io/badge/Min_SDK-API_23-orange?style=flat-square)](#tech-stack)
 [![Target SDK](https://img.shields.io/badge/Target_SDK-API_35-brightgreen?style=flat-square)](#tech-stack)
 
@@ -31,7 +29,9 @@ A native Android Accessibility Service that injects AI directly into *any* text 
 
 <br/>
 
-[⬇️ Download APK](#download) &nbsp;•&nbsp; [🐛 Report Bug](https://github.com/Musheer360/Buddy/issues) &nbsp;•&nbsp; [✨ Request Feature](https://github.com/Musheer360/Buddy/issues/new) &nbsp;•&nbsp; [🔨 Build from Source](#building-from-source)
+[🔨 Build from Source](#building-from-source)
+
+> Personal fork of Buddy by Deepender25 (MIT License). No prebuilt APKs — build from source.
 
 </div>
 
@@ -41,7 +41,6 @@ A native Android Accessibility Service that injects AI directly into *any* text 
 
 - [What is Buddy?](#what-is-buddy)
 - [How it Works — Flowchart](#how-it-works)
-- [APK Info & Download](#download)
 - [Getting Started](#getting-started)
 - [Built-in Commands](#built-in-commands)
 - [Custom Commands](#custom-commands)
@@ -52,7 +51,6 @@ A native Android Accessibility Service that injects AI directly into *any* text 
 - [Privacy & Security](#privacy--security)
 - [Building from Source](#building-from-source)
 - [Known Limitations](#known-limitations)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -129,50 +127,11 @@ sequenceDiagram
 
 ---
 
-## 📦 Download
+## 📦 Install
 
-| Property | Value |
-|:---|:---|
-| **Version** | v1.4 |
-| **APK Size** | ~20.4 MB (20,883 KB) |
-| **Architecture** | arm64-v8a |
-| **Min Android** | Android 6.0 (API 23) |
-| **Target Android** | Android 15 (API 35) |
+There is no prebuilt APK. Build it yourself — see [Building from Source](#building-from-source).
 
-### ✨ What's New in v1.4
-- **AI Temperature Control:** A brand-new **"AI Creativity"** section has been added to Settings. A smooth slider lets you dial the temperature from `0.0` (focused & deterministic) all the way to `2.0` (highly creative & varied). The selected value is persisted in SharedPreferences and passed to all providers — Gemini, Groq, and any OpenAI-compatible endpoint — replacing the old hardcoded default.
-- **Redesigned Keys Screen:** The API Keys page received a major facelift:
-  - A new **Usage Dashboard** widget at the top displays a 7-day mini bar chart of your AI request activity alongside a **"Most Used"** command card — all at a glance.
-  - Key cards are now cleaner and more compact, showing *"Provider Name Key #"* (e.g., `Gemini Key 1`) instead of the masked key string with badge chips.
-  - The **Save Key** button is now taller (`48 dp`) with a rounded `12 dp` corner radius for a more polished look.
-- **Redesigned Commands Screen:** The Commands tab received an extensive visual overhaul for a more intuitive and modern browsing experience.
-- **About Section in Settings:** A new **"About"** section with a tappable *"Support Buddy"* card links directly to the GitHub repository — a quick one-tap way to star the project.
-
-### ✨ Prior Release (v1.3)
-- **Groq API Support:** Complete integration for Groq as a first-class AI provider, bringing lightning-fast inferences. Supported models include:
-  - `llama-3.3-70b-versatile`
-  - `meta-llama/llama-4-scout-17b-16e-instruct`
-  - `llama-3.1-8b-instant`
-  - `openai/gpt-oss-20b`
-  - `openai/gpt-oss-120b`
-- **Redesigned Settings & Keys UI:** Completely revamped the Settings and Keys page to be more user-friendly, intuitive, and easier to navigate for seamless API key management.
-
-### ✨ Prior Release (v1.2)
-- **Premium API Analytics:** Keep track of the stability and success rate of your AI queries. Select any of your keys to launch a highly detailed dashboard tracking total requests, error rates, and active usage statistics globally.
-- **Intelligent Key Identity:** Keys are no longer ambiguously numbered. When you add a new key, the app dynamically identifies the provider signature (Gemini, OpenAI, Anthropic, Custom, Groq) and tags it properly!
-- **Sleeker Commands Experience:** Handcrafted a new floating `ModalBottomSheet` experience triggered by a FAB for adding/editing Custom Commands so the screen is never cluttered by permanent text fields. Command cards also received high-quality custom color badges (`Built-in`, `Text Replacer`, `AI`) that flawlessly match the premium dark theme!
-
-### ✨ Prior Release (v1.1)
-- **History Tab:** Keep track of every AI generation and text replacement locally. Easily copy, review, or clear your past outputs directly from the new bottom navigation bar.
-- **Static Text Replacers:** Create custom commands that instantly expand to normal static text (e.g. typing `/address` to output your home address) completely bypassing the AI for zero delays!
-- **In-App Updater:** The Dashboard now shows a compact GitHub button in the top-right corner — tap to star the repo when up to date, or get a direct link to the latest release when an update is available.
-- **Banking App Quick-Toggle:** A new informational card on the Dashboard clearly explains that banking apps block Accessibility Services. A one-tap **"Turn Off"** button takes you directly to the Accessibility Settings to disable Buddy before opening sensitive apps.
-- **Enhanced UI:** Added explicit numbered indexing for your encrypted API Keys, plus completely interactive redirect links seamlessly letting you generate Gemini and OpenAI keys directly from the browser.
-- **Strict Language Preservation:** Completely eradicated auto-translation side-effects. You can seamlessly type casually in Hinglish (or any specific alphabet) and the AI will critically preserve your alphabet structure returning strict Hinglish rather than breaking into Devanagari.
-
-> ℹ️ **Why ~20 MB?** Buddy bundles the full **Python 3.12 interpreter** via [Chaquopy](https://chaquo.com/chaquopy/) to handle AI API calls natively inside the APK — no Termux, no server, no extra installs needed.
-
-➡️ **[Download the latest APK from Releases →](https://github.com/Musheer360/Buddy/releases/latest)**
+> ℹ️ **Why is the APK ~20 MB?** Buddy bundles the full **Python 3.12 interpreter** via [Chaquopy](https://chaquo.com/chaquopy/) to make AI API calls inside the APK.
 
 ---
 
@@ -180,12 +139,9 @@ sequenceDiagram
 
 Follow these 5 simple steps to go from zero to AI-powered in under 5 minutes.
 
-### Step 1 — Install the APK
+### Step 1 — Build and install Buddy
 
-1. Download the APK from the [Releases page](https://github.com/Musheer360/Buddy/releases/latest)
-2. On your Android phone, open the downloaded `.apk` file
-3. If prompted, allow **"Install from unknown sources"** for your file manager
-4. Tap **Install**
+Follow [Building from Source](#building-from-source) and install the APK on your phone.
 
 ### Step 2 — Get a Free API Key
 
@@ -469,6 +425,7 @@ Buddy is designed with a strict **privacy-first** philosophy:
 
 ### What Buddy Does
 - ✅ All API keys encrypted at rest using **AES-256-GCM via Android Keystore**
+- ✅ App data is excluded from cloud backup and device-to-device transfer
 - ✅ Text only leaves your device when you intentionally trigger an AI command
 - ✅ Data flows **directly** from your device → your configured AI provider, nowhere else
 - ✅ Accessibility Service only reads text when a trigger character is detected (not a keylogger)
@@ -494,7 +451,6 @@ Your API keys are hardware-bound — they cannot be extracted from the device ev
 | `BIND_ACCESSIBILITY_SERVICE` | Core functionality — detects text changes and injects AI responses |
 | `INTERNET` | Direct API calls to your configured AI provider |
 | `VIBRATE` | Haptic feedback on success/failure |
-| `SYSTEM_ALERT_WINDOW` | Overlay toast notifications (via `TYPE_ACCESSIBILITY_OVERLAY`) |
 
 ---
 
@@ -558,7 +514,7 @@ Download from [developer.android.com/studio](https://developer.android.com/studi
 ### Step 2 — Clone the Repository
 
 ```bash
-git clone https://github.com/Musheer360/Buddy.git
+git clone <your-repo-url>/Buddy.git
 cd Buddy
 ```
 
@@ -646,41 +602,6 @@ Aggressive OEM battery management may kill the Accessibility Service in the back
 
 ---
 
-## 🤝 Contributing
-
-Contributions are warmly welcome! Here's how to get involved:
-
-### Ways to Contribute
-
-- 🐛 **Bug reports** — Open an [issue](https://github.com/Musheer360/Buddy/issues) with reproduction steps
-- 💡 **Feature requests** — Suggest improvements via [issues](https://github.com/Musheer360/Buddy/issues/new)
-- 🔧 **Code contributions** — Fork → branch → PR
-- 📖 **Documentation** — Improve this README or add wiki pages
-- 🌍 **Translations** — Help localize the app UI
-
-### Pull Request Guidelines
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Make your changes and commit: `git commit -m "feat: add your feature"`
-4. Push to your fork: `git push origin feature/your-feature-name`
-5. Open a Pull Request against `main`
-
-### Commit Message Convention
-
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat:     New feature
-fix:      Bug fix
-docs:     Documentation change
-refactor: Code restructure (no behavior change)
-perf:     Performance improvement
-chore:    Build or tooling change
-```
-
----
-
 ## 📄 License
 
 This project is licensed under the **MIT License**.
@@ -715,8 +636,5 @@ See the full [`LICENSE`](LICENSE) file for details.
 
 *Buddy — because your ideas deserve better words.*
 
-<br/>
-
-[![Star this repo](https://img.shields.io/github/stars/Musheer360/Buddy?style=social)](https://github.com/Musheer360/Buddy)
 
 </div>
