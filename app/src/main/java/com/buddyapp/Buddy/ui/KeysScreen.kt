@@ -282,25 +282,27 @@ fun KeysScreen(navController: NavController? = null) {
                                         testResult = "This key has already been added"
                                         return@launch
                                     }
-                                    val result = when {
-                                        trimmedKey.startsWith("gsk_") ->
+                                    // A key is only ever tested against its own provider.
+                                    val result = when (KeyManager.providerForKey(trimmedKey)) {
+                                        KeyManager.PROVIDER_GROQ ->
                                             PythonBridge.groqValidateKey(trimmedKey)
-                                        trimmedKey.startsWith("AIza") ->
+                                        KeyManager.PROVIDER_GEMINI ->
                                             PythonBridge.geminiValidateKey(trimmedKey)
-                                        trimmedKey.startsWith("sk-") -> {
-                                            val ep = if (customEndpoint.isNotBlank()) customEndpoint else "https://api.openai.com/v1"
-                                            PythonBridge.openaiValidateKey(trimmedKey, ep)
-                                        }
-                                        providerType == "groq" ->
-                                            PythonBridge.groqValidateKey(trimmedKey)
-                                        providerType == "custom" && customEndpoint.isNotBlank() ->
+                                        else -> {
+                                            if (customEndpoint.isBlank()) {
+                                                isTesting = false
+                                                testResult = "Set the custom endpoint in Settings first"
+                                                return@launch
+                                            }
                                             PythonBridge.openaiValidateKey(trimmedKey, customEndpoint)
-                                        else ->
-                                            PythonBridge.geminiValidateKey(trimmedKey)
+                                        }
                                     }
                                     isTesting = false
                                     if (result.isSuccess) {
-                                        keyManager.addKey(trimmedKey)
+                                        if (!keyManager.addKey(trimmedKey)) {
+                                            testResult = "Could not encrypt the key. It was not saved."
+                                            return@launch
+                                        }
                                         keys = keyManager.getKeys()
                                         newKey = ""
                                         testResult = "Valid key added!"
